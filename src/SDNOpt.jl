@@ -24,6 +24,4 @@ export μ2s
 include("network.jl")
 include("models.jl")
 
-f() = "hello1"
-
 end
