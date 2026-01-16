@@ -191,6 +191,7 @@ function pure_controller_placement(
     M :: Int,
     K :: Int;
     optim = DEFAULT_OPTIM,
+    tol = 1e-9
 )
     V = nv(g)
 
@@ -211,7 +212,7 @@ function pure_controller_placement(
         Z_star = res.objective_value
 
         naop_time_ms += res.time
-        if Z_star ≥ Y_star
+        if Z_star ≥ Y_star - tol
             break
         end
 
@@ -265,7 +266,7 @@ function pure_attack_generation(
         Y_star = res.objective_value
 
         cpop_time_ms += res.time
-        if Y_star ≤ Z_star - tol
+        if Y_star ≤ Z_star + tol
             break
         end
 
