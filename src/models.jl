@@ -1,5 +1,25 @@
 DEFAULT_OPTIM = SCIP.Optimizer
 
+struct Placement
+    pc :: Vector{Int}
+    bc :: Vector{Int}
+
+    Placement(pc :: Vector{Int}, bc :: Vector{Int}) = new(pc, bc)
+    Placement(pc :: Vector{Int}) = new(pc, [])
+end
+
+function Base.show(io::IO, p::Placement)
+    if !isempty(p.bc) && isempty(p.pc)
+        error("Primary controller list is empty but backup is not empty")
+    end
+
+    if !isempty(p.pc) && isempty(p.bc)
+        print(io, p.pc)
+    else
+        print(io, "primaries = $(p.pc), backups = $(p.bc)")
+    end
+end
+
 macro elapsed_time(expr)
     return quote
         local start_time = time_ns()
@@ -15,7 +35,7 @@ macro elapsed_time(expr)
     end
 end
 
-function μ2s(ms)
+function μs2s(ms)
     ms / 1e6
 end
 
@@ -291,4 +311,174 @@ function pure_attack_generation(
         iterations = count,
         placements = placements,
     )
+end
+
+### FEASIBILITY GENERATION 
+
+# Primary controllers only, controllers capacity not considered
+# max Z 
+# s.t. sum {v in VERTICES} y[v] = M
+#      {{v, w} in U} y[v] + y[w] ≤ 1
+#      {v in VERTICES} sum {w ∈ W(v)} y[w] ≥ 1
+#      l=1,2,…,L, sum {v ∈ T(l)} y[v] ≤ m 
+#      {v in VERTICES} y[v] ∈ B
+# where T(l) denotes the set of nodes where controllers of the generated
+# placement number l∈1,2,…,L are located.
+
+# For cost266 
+# - P* = 3, tight CCD BCC = 1500, P* = 5 BCC = 2000 
+function generate_controller_placement(
+    g :: MetaGraph,
+    M :: Int, 
+    P :: Union{Int, Tuple{Int, Int}},
+    B :: Union{Int, Tuple{Int, Int}};
+    optim = DEFAULT_OPTIM,
+    BCC :: Float64 = 0.0,
+    BSC :: Float64 = 0.0,
+    control_capacity :: Dict{Int, Float64} = Dict{Int, Float64}(),
+    control_demand :: Dict{Int, Float64} = Dict{Int, Float64}(),
+    placement_list :: Vector{Placement} = Placement[],
+    placement_difference :: Int = 1,
+    dists :: Union{Matrix{Float64}, Nothing} = nothing,
+    tol = 1e-9
+)
+    m = Model(optim)
+    dists = isnothing(dists) ? get_distance_matrix(g) : dists
+    V = nv(g)
+    local x
+    has_capacity = false
+
+    if !isempty(control_capacity) || !isempty(control_demand)
+        @assert (!isempty(control_capacity) && !isempty(control_demand)) "Both control capacity and control demand should not be empty"
+        has_capacity = true
+    end
+    
+    #  # if P isa Tuple
+
+    P′, P″ = P isa Tuple ? P : (P, P)
+    B′, B″ = B isa Tuple ? B : (B, B)
+
+    @assert P′ ≤ P″ "P′ should be less than or equal to P″"
+    @assert B′ ≤ B″ "B′ should be less than or equal to B″"
+
+    # Primary controller list
+    @variable(m, y[1:V], Bin)
+
+    # Backup controller list
+    @variable(m, x[1:V], Bin)
+    # Controller assignment list
+    @variable(m, z[1:V, 1:V], Bin)
+
+    if has_capacity
+        @variable(m, Z)
+        @objective(m, Min, Z)
+    else
+        @objective(m, FEASIBILITY_SENSE, 0)
+    end
+
+    # (2b) Total number of primary and backup controllers should equal M
+    @constraint(m, sum(x) + sum(y) == M)
+
+    # (2c) Primary controllers constraint 
+    @constraint(m, P′ ≤ sum(y) ≤ P″)
+
+    # (2d) Backup controllers constraint
+    @constraint(m, B′ ≤ sum(x) ≤ B″)
+
+    if BCC > 0.0
+        # println("(2e) activated")
+        U = get_U(g, BCC; dists=dists)
+
+        # (2e) Controllers must be able to reach each other inside BCC delay.
+        for (v, w) ∈ U
+            @constraint(m, y[v] + y[w] ≤ 1)
+        end
+    end
+
+    if BSC > 0.0
+        # println("(2f) activated")
+        W = get_Wv(g, BSC; dists=dists)
+        # @show W
+        # (2f) Must have one controller in the vicinity of SCD.
+
+        for (v, Wv) ∈ W
+            # @show Wv
+            @constraint(m, sum(y[Wv]) ≥ 1)
+        end
+    end
+
+    # (2g) Can only be a primary or backup. Not both
+    @constraint(m, y .+ x .≤ 1)
+
+    # (2h) Controller assignment 
+    for v ∈ 1:V
+        @constraint(m, sum(z[v, :]) == 1)
+    end
+
+    # (2i)
+    for v ∈ 1:V
+        @constraint(m, z[v, :] .≤ y)
+    end
+
+    # (2j) Capacity constraint
+    if has_capacity
+        cd = [control_demand[v] for v ∈ 1:V]
+        cc = [control_capacity[v] for v ∈ 1:V]
+        for w ∈ 1:V
+            @constraint(m, cd ⋅ z[:, w] ≤ cc[w] * y[w] + Z)
+        end
+    end
+
+    # (2k) Uniqueness constraint
+    for s ∈ placement_list 
+        @constraint(m, sum(y[s.pc]) + sum(x[s.pc]) ≤ placement_difference)
+    end
+
+    time_taken = @elapsed_time optimize!(m)
+    if ! is_solved_and_feasible(m)
+        return :infeasible 
+    end
+
+    placement = Placement(to_indices(y), to_indices(x))
+    
+    (
+        controllers = placement,
+        time = time_taken,
+        model = m,
+        objective_value = Z,
+    )
+end
+
+function get_U(
+    g :: MetaGraph, 
+    BCC :: Float64; 
+    dists :: Union{Matrix{Float64}, Nothing},
+    tol = 1e-9
+)
+    V = nv(g)
+    dists = isnothing(dists) ? get_distance_matrix(g) : dists
+    [
+        (v, w) for (v, w) ∈ Base.Iterators.product(1:V, 1:V)
+        if v ≤ w && dists[v, w] > BCC - tol
+    ]
+end
+
+function get_Wv(
+    g :: MetaGraph, 
+    BSC :: Float64; 
+    dists :: Union{Matrix{Float64}, Nothing},
+    tol = 1e-9
+)
+    V = nv(g)
+    W = Dict{Int, Vector{Int}}()
+    dists = isnothing(dists) ? get_distance_matrix(g) : dists
+
+    for v ∈ 1:V
+        vicinity = [w for w ∈ 1:V if dists[v, w] ≤ BSC + tol] # && v ≤ w]
+        if !isempty(vicinity)
+            W[v] = vicinity
+        end
+    end
+
+    W
 end

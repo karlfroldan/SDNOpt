@@ -141,3 +141,15 @@ function incident_edges(g :: MetaGraph, v :: Int)
     v_idx = code_for(g, v)
     [e for e ∈ edges(g) if e.src == v_idx || e.dst == v_idx]
 end
+
+function get_distance_matrix(g::AbstractGraph)
+    V = nv(g)
+    dists = fill(Inf, V, V)
+
+    for i in 1:V
+        algo_result = dijkstra_shortest_paths(g, i)
+        dists[i, :] = algo_result.dists
+    end
+
+    return dists
+end
