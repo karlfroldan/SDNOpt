@@ -9,6 +9,7 @@ using GraphRecipes
 using Random: shuffle
 using LinearAlgebra
 
+using Base.Iterators
 
 using JuMP
 
@@ -28,10 +29,15 @@ export μs2s
 #          min-max optimization of attacks on nodes in service networks.
 export cpop, naop, pure_attack_generation, pure_controller_placement
 
+export mixed_strategies_master, mixed_strategies_pricing_attack
+export mixed_strategies_pricing_placement
+
+### Exports from algorithm.jl 
+export mixed_strategies_colgen
+
 ### Includes
 include("network.jl")
 include("models.jl")
-
-g() = "hello"
+include("algorithm.jl")
 
 end

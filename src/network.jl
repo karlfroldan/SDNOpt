@@ -153,3 +153,26 @@ function get_distance_matrix(g::AbstractGraph)
 
     return dists
 end
+
+function surviving_nodes(g :: AbstractGraph, s :: Vector{Int}, a :: Vector{Int})
+    # Return the surviving nodes (not components) given an attack 
+    ag = attack_graph(g, a)
+
+    Iterators.flatten(
+        [collect(labels(c)) for c ∈ components(ag) if !isdisjoint(collect(labels(c)), s)]
+    ) |> collect |> sort
+end
+
+function surviving_nodes(
+    g :: AbstractGraph,
+    ps :: Vector{Int}, # Primary controllers 
+    bs :: Vector{Int}, # Backup controllers 
+    a :: Vector{Int}, # attacks
+)
+    ag = attack_graph(g, a)
+
+    cs = union(ps, bs)
+    Iterators.flatten(
+        [collect(labels(c)) for c ∈ components(ag) if !isdisjoint(collect(labels(c)), cs)]
+    ) |> collect |> sort
+end

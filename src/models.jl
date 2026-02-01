@@ -1,4 +1,4 @@
-DEFAULT_OPTIM = SCIP.Optimizer
+DEFAULT_OPTIM = CPLEX.Optimizer
 
 struct Placement
     pc :: Vector{Int}
@@ -33,6 +33,15 @@ macro elapsed_time(expr)
             (elapsed, result)
         end
     end
+end
+
+function safe_probs(p :: AbstractArray; tol::Float64=1e-10)
+    v = abs.(collect(p))
+    v[v .< tol] .= 0.0
+
+    # Normalize
+    total_mass = sum(v)
+    v ./ total_mass
 end
 
 function μs2s(ms)
@@ -481,4 +490,240 @@ function get_Wv(
     end
 
     W
+end
+
+
+### Paper:
+### Finding Optimal Mixed-Strategies in a Matrix Game
+### Between the Attacker and the Network Operator
+
+
+## Master Problem 
+function mixed_strategies_master(
+    g :: MetaGraph,
+    placementset :: Vector{Vector{Int}},
+    attackset :: Vector{Vector{Int}};
+    optim = DEFAULT_OPTIM,
+)
+    m = Model(optim)
+    set_silent(m)
+
+    psize = length(placementset)
+    # asize = length(attackset)
+
+    @variable(m, q[1:psize] ≥ 0)
+    @variable(m, y)
+
+    @objective(m, Max, y)
+    
+    # (22b) the probability should equal 1.
+    @constraint(m, sum(q) == 1.0)
+
+    # (22c)
+    V_coeffs = Dict(
+        a => [
+            length(surviving_nodes(g, s, a))
+            for s ∈ placementset
+        ]
+        for a ∈ attackset
+    )
+
+    @constraint(m, con[a in attackset], y ≤ V_coeffs[a] ⋅ q)
+
+
+    time_taken = @elapsed_time optimize!(m)
+    if ! is_solved_and_feasible(m)
+        return :infeasible 
+    end
+
+    raw_duals = [dual(con[a]) for a in attackset]
+
+    (
+        time = time_taken,
+        model = m,
+        objective = objective_value(m),
+        q_star = safe_probs(value.(q)),
+        p_star = safe_probs(abs.(raw_duals)), 
+    )
+end
+
+function mixed_strategies_pricing_placement_backup(
+    g :: MetaGraph,
+    C :: Int, # Maximum number of controllers
+    P :: Tuple{Int, Int},
+    B :: Tuple{Int, Int},
+    attackset :: Vector{Vector{Int}},
+    p :: Vector{Float64};
+    optim = DEFAULT_OPTIM,
+    BCC :: Float64 = 0.0,
+    BSC :: Float64 = 0.0,
+    dists :: Union{Nothing, Matrix{Float64}} = nothing,
+)
+    P′, P″ = P 
+    B′, B″ = B 
+
+    @assert P′ ≤ P″ "P′ > P″"
+    @assert B′ ≤ B″ "B′ > B″"
+
+    V = nv(g)
+    alen = length(attackset)
+
+    dists = isnothing(dists) ? get_distance_matrix(g) : dists
+
+    m = Model(optim) 
+
+    @variables(m, begin
+        x[1:V], Bin # Backup controllers 
+        y[1:V], Bin # Primary controllers 
+        Y[1:alen]
+    end)
+
+    # Component survivability
+    C_sets = Dict(
+        a => components(attack_graph(g, attack)) for (a, attack) ∈ enumerate(attackset)
+    )
+    
+
+    @objective(m, Max, p ⋅ Y)
+
+    # Maximum number of controllers 
+    @constraint(m, sum(x) + sum(y) ≤ C)
+
+    # Primary and backup controller bounding 
+    @constraints(m, begin
+        P′ ≤ sum(y) ≤ P″
+        B′ ≤ sum(x) ≤ B″
+    end)
+
+    # controllers must be within BCC distance of each other
+    if BCC > 0.0 
+        U = get_U(g, BCC; dists=dists)
+        @constraint(m, [(v, w) ∈ U], y[v] + y[w] ≤ 1)
+    end
+
+    # Switch controller delay
+    if BSC > 0.0 
+        W = get_Wv(g, BSC; dists=dists)
+        @constraint(m, [v ∈ 1:V], sum(y[W[v]]) ≥ 1)
+    end
+
+    # controllers can only be one type.
+    @constraint(m, y .+ x .≤ 1)
+
+    m
+end
+
+function mixed_strategies_pricing_placement(
+    g :: MetaGraph,
+    M :: Int,
+    attackset :: Vector{Vector{Int}},
+    p :: Vector{Float64};
+    optim = DEFAULT_OPTIM,
+)
+    m = Model(optim)
+    set_silent(m)
+
+    V = nv(g)
+    alen = length(attackset)
+
+    @variable(m, s[1:V], Bin)
+    @variable(m, y[1:V, 1:alen], Bin)
+    @variable(m, Y[1:alen], Int)
+
+    @objective(m, Max, p ⋅ Y)
+
+    # (24b) Equals P
+    @constraint(m, sum(s) == M)
+
+    # (24c) attacked nodes are 0
+    @constraint(m, [(a, vs) ∈ enumerate(attackset)], y[vs, a] .== 0)
+
+    # (24d) Component survivability
+    for (a, vs) ∈ enumerate(attackset)
+        ag = attack_graph(g, vs)
+
+        @constraint(m,
+            [c ∈ components(ag)], 
+            # LHS: The number of surviving nodes in the components
+            #  should be 0 whenever the RHS is 0.
+            sum(y[collect(labels(c)), a]) ≤ nv(c) * sum(s[collect(labels(c))])
+        )
+    end
+
+    # (24e)
+    @constraint(m, [a ∈ eachindex(attackset)], Y[a] == sum(y[:, a]))
+
+    time_taken = @elapsed_time optimize!(m)
+    if ! is_solved_and_feasible(m)
+        return :infeasible
+    end
+
+    (
+        time = time_taken,
+        objective = objective_value(m),
+        model = m,
+        s = to_indices(s),
+    )
+end
+
+
+function mixed_strategies_pricing_attack(
+    g :: MetaGraph,
+    K :: Int,
+    placementset :: Vector{Vector{Int}},
+    q :: Vector{Float64};
+    optim = DEFAULT_OPTIM,
+    tol :: Float64 = 1e-9,
+
+)
+    m = Model(optim)
+    set_silent(m)
+
+    V = nv(g)
+    
+
+    active_idxs = [i for (i, val) ∈ enumerate(q) if val > tol]
+    S′ = placementset[active_idxs]
+    q′ = q[active_idxs]
+
+    slen = length(S′)
+
+    @variable(m, F[1:slen] ≥ 0, Int)
+    @variable(m, a[1:V], Bin)
+    @variable(m, z[1:V, 1:slen], Bin)
+
+    @objective(m, Min, q′ ⋅ F)
+
+    # (25b)
+    @constraint(m, sum(a) == K)
+
+    # (25c)
+    @constraint(m, [(s, placement) ∈ enumerate(S′)], 
+        z[placement, s] .== 1 .- a[placement])
+
+
+    # (25d)
+    for edge ∈ edges(g)
+        α, β = edge.src, edge.dst
+        @constraint(m, [s ∈ eachindex(S′)], 
+            z[β, s] .≥ z[α, s] .- a[β])
+
+        @constraint(m, [s ∈ eachindex(S′)],
+            z[α, s] .≥ z[β, s] .- a[α])
+    end
+
+    # (25f)
+    @constraint(m, [s ∈ eachindex(S′)], F[s] == sum(z[:, s]))
+
+    time_taken = @elapsed_time optimize!(m)
+    if ! is_solved_and_feasible(m)
+        return :infeasible 
+    end
+
+    (
+        time = time_taken,
+        objective = objective_value(m),
+        model = m,
+        a = to_indices(a),
+    )
 end
