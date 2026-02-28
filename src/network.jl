@@ -77,7 +77,7 @@ function load_network(filename :: AbstractString)
     end
     
     for e in edges
-        @printf("%d -> %d => %f\n", e.link_a, e.link_b, e.length)
+        # @printf("%d -> %d => %f\n", e.link_a, e.link_b, e.length)
         mg[e.link_a, e.link_b] = e.length
     end
 
@@ -119,6 +119,7 @@ function plot_network(g::MetaGraph; title = nothing)
         aspect_ratio = :equal
     )
 end
+
 
 function components(g::MetaGraph)
     component_indices = connected_components(g)

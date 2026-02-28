@@ -75,7 +75,6 @@ function mixed_strategies_colgen(
 
         @assert res != :infeasible "Master Problem is Infeasible"
         (obj, p_star, q_star) = res.objective, res.p_star, res.q_star
-        # println("")
     end
 
     (
