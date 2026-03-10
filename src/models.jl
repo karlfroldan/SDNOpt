@@ -1,65 +1,3 @@
-DEFAULT_OPTIM = CPLEX.Optimizer
-
-struct Placement
-    pc :: Vector{Int}
-    bc :: Vector{Int}
-
-    Placement(pc :: Vector{Int}, bc :: Vector{Int}) = new(pc, bc)
-    Placement(pc :: Vector{Int}) = new(pc, [])
-end
-
-function Base.show(io::IO, p::Placement)
-    if !isempty(p.bc) && isempty(p.pc)
-        error("Primary controller list is empty but backup is not empty")
-    end
-
-    if !isempty(p.pc) && isempty(p.bc)
-        print(io, p.pc)
-    else
-        print(io, "primaries = $(p.pc), backups = $(p.bc)")
-    end
-end
-
-macro elapsed_time(expr)
-    return quote
-        local start_time = time_ns()
-        local result = $(esc(expr))
-        local end_time = time_ns()
-        local elapsed = (end_time - start_time) / 1e3
-        
-        if result === nothing
-            elapsed
-        else
-            (elapsed, result)
-        end
-    end
-end
-
-function safe_probs(p :: AbstractArray; tol::Float64=1e-10)
-    v = abs.(collect(p))
-    v[v .< tol] .= 0.0
-
-    # Normalize
-    total_mass = sum(v)
-    v ./ total_mass
-end
-
-function μs2s(ms)
-    ms / 1e6
-end
-
-function randvec(k::Int, n::Int)
-    if n > k
-        error("n cannot be greater than k")
-    end
-
-    return sort(shuffle(1:k)[1:n])
-end
-
-function to_indices(controller_variable)
-    findall(Int.(round.(value.(controller_variable))) .== 1)
-end
-
 ## Paper: Max-Min Optimization of Controller Placements
 ##        vs Min-Max Optimization of Attacks on Nodes in Service Networks
 
@@ -119,11 +57,8 @@ function cpop(
         @constraint(model, Y ≤ sum(y[:, a]))
     end
 
-    time_taken = @elapsed_time optimize!(model)
-    if ! is_solved_and_feasible(model)
-        return :infeasible 
-    end
-    
+    time_taken = @solve_problem!(model)
+
     (
         controllers = to_indices(s),
         objective_value = objective_value(model),
@@ -200,10 +135,7 @@ function naop(
         @constraint(model, Z ≥ sum(z[:, s]))
     end
 
-    time_taken = @elapsed_time optimize!(model)
-    if ! is_solved_and_feasible(model)
-        return :infeasible 
-    end
+    time_taken = @solve_problem!(model)
     
     (
         attack = to_indices(a),
@@ -338,9 +270,9 @@ end
 # - P* = 3, tight CCD BCC = 1500, P* = 5 BCC = 2000 
 function generate_controller_placement(
     g :: MetaGraph,
-    M :: Int, 
-    P :: Union{Int, Tuple{Int, Int}},
-    B :: Union{Int, Tuple{Int, Int}};
+    P :: Union{Int, IntBound},
+    B :: Union{Int, IntBound};
+    C :: Union{Int, Nothing} = nothing,
     optim = DEFAULT_OPTIM,
     BCC :: Float64 = 0.0,
     BSC :: Float64 = 0.0,
@@ -348,10 +280,10 @@ function generate_controller_placement(
     control_demand :: Dict{Int, Float64} = Dict{Int, Float64}(),
     placement_list :: Vector{Placement} = Placement[],
     placement_difference :: Int = 1,
-    dists :: Union{Matrix{Float64}, Nothing} = nothing,
-    tol = 1e-9
+    dists :: Union{Matrix{Float64}, Nothing} = nothing
 )
     m = Model(optim)
+    set_silent(m)
     dists = isnothing(dists) ? get_distance_matrix(g) : dists
     V = nv(g)
     local x
@@ -364,11 +296,8 @@ function generate_controller_placement(
     
     #  # if P isa Tuple
 
-    P′, P″ = P isa Tuple ? P : (P, P)
-    B′, B″ = B isa Tuple ? B : (B, B)
-
-    @assert P′ ≤ P″ "P′ should be less than or equal to P″"
-    @assert B′ ≤ B″ "B′ should be less than or equal to B″"
+    P′, P″ = @unpack_bounds P 
+    B′, B″ = @unpack_bounds B
 
     # Primary controller list
     @variable(m, y[1:V], Bin)
@@ -384,10 +313,11 @@ function generate_controller_placement(
     else
         @objective(m, FEASIBILITY_SENSE, 0)
     end
-
+    
     # (2b) Total number of primary and backup controllers should equal M
-    @constraint(m, sum(x) + sum(y) == M)
-
+    if !isnothing(C)
+        @constraint(m, sum(x) + sum(y) == C)
+    end 
     # (2c) Primary controllers constraint 
     @constraint(m, P′ ≤ sum(y) ≤ P″)
 
@@ -443,18 +373,15 @@ function generate_controller_placement(
         @constraint(m, sum(y[s.pc]) + sum(x[s.pc]) ≤ placement_difference)
     end
 
-    time_taken = @elapsed_time optimize!(m)
-    if ! is_solved_and_feasible(m)
-        return :infeasible 
-    end
+    time_taken = @solve_problem!(m)
 
-    placement = Placement(to_indices(y), to_indices(x))
+    placement = Placements(to_indices(y), to_indices(x))
     
     (
         controllers = placement,
         time = time_taken,
         model = m,
-        objective_value = Z,
+        # objective_value = Z,
     )
 end
 
@@ -501,8 +428,8 @@ end
 ## Master Problem 
 function mixed_strategies_master(
     g :: MetaGraph,
-    placementset :: Vector{Vector{Int}},
-    attackset :: Vector{Vector{Int}};
+    placementset :: Vector{Placements},
+    attackset :: Vector{Attacks};
     optim = DEFAULT_OPTIM,
 )
     m = Model(optim)
@@ -529,12 +456,7 @@ function mixed_strategies_master(
     )
 
     @constraint(m, con[a in attackset], y ≤ V_coeffs[a] ⋅ q)
-
-
-    time_taken = @elapsed_time optimize!(m)
-    if ! is_solved_and_feasible(m)
-        return :infeasible 
-    end
+    time_taken = @solve_problem!(m)
 
     raw_duals = [dual(con[a]) for a in attackset]
 
@@ -549,21 +471,18 @@ end
 
 function mixed_strategies_pricing_placement_backup(
     g :: MetaGraph,
-    C :: Int, # Maximum number of controllers
-    P :: Tuple{Int, Int},
-    B :: Tuple{Int, Int},
-    attackset :: Vector{Vector{Int}},
+    P :: Union{Int, IntBound},
+    B :: Union{Int, IntBound},
+    attackset :: Vector{Attacks},
     p :: Vector{Float64};
+    C :: Union{Int, Nothing} = nothing,
     optim = DEFAULT_OPTIM,
     BCC :: Float64 = 0.0,
     BSC :: Float64 = 0.0,
     dists :: Union{Nothing, Matrix{Float64}} = nothing,
 )
-    P′, P″ = P 
-    B′, B″ = B 
-
-    @assert P′ ≤ P″ "P′ > P″"
-    @assert B′ ≤ B″ "B′ > B″"
+    P′, P″ = @unpack_bounds P
+    B′, B″ = @unpack_bounds B 
 
     V = nv(g)
     alen = length(attackset)
@@ -571,6 +490,7 @@ function mixed_strategies_pricing_placement_backup(
     dists = isnothing(dists) ? get_distance_matrix(g) : dists
 
     m = Model(optim) 
+    set_silent(m)
 
     @variables(m, begin
         x[1:V], Bin # Backup controllers 
@@ -579,15 +499,18 @@ function mixed_strategies_pricing_placement_backup(
     end)
 
     # Component survivability
-    C_sets = Dict(
-        a => components(attack_graph(g, attack)) for (a, attack) ∈ enumerate(attackset)
-    )
-    
+    C_sets = Dict(a => components(attack_graph(g, attack)) for (a, attack) ∈ enumerate(attackset))
+
+    # S=1 if component survives
+    # @variable(m, S[1:alen, 1:length(C_sets)], Bin)
+    @variable(m, S[a = 1:alen, c = 1:length(C_sets[a])], Bin)
 
     @objective(m, Max, p ⋅ Y)
 
     # Maximum number of controllers 
-    @constraint(m, sum(x) + sum(y) ≤ C)
+    if !isnothing(C)
+        @constraint(m, sum(x) + sum(y) == C)
+    end
 
     # Primary and backup controller bounding 
     @constraints(m, begin
@@ -601,7 +524,6 @@ function mixed_strategies_pricing_placement_backup(
         @constraint(m, [(v, w) ∈ U], y[v] + y[w] ≤ 1)
     end
 
-    # Switch controller delay
     if BSC > 0.0 
         W = get_Wv(g, BSC; dists=dists)
         @constraint(m, [v ∈ 1:V], sum(y[W[v]]) ≥ 1)
@@ -609,8 +531,39 @@ function mixed_strategies_pricing_placement_backup(
 
     # controllers can only be one type.
     @constraint(m, y .+ x .≤ 1)
+    
+    # @constraint(m, [a in 1:alen], 
+    # println(C_sets)
+    for a ∈ 1:alen
+        for (c, comp) ∈ enumerate(C_sets[a])
+            vs = collect(labels(comp))
+            @constraint(m, S[a, c] .≤ sum(x[vs] + y[vs]))
+        end
+    end
 
-    m
+    @constraint(m,
+        [a ∈ 1:alen],
+        Y[a] == sum([
+            let 
+                vs = collect(labels(cs))
+                length(vs) * S[a, c]
+            end
+            for (c, cs) ∈ enumerate(C_sets[a])
+        ])
+    )
+
+    time_taken = @solve_problem!(m)
+
+    placements = B″ > 0 ? 
+        Placements(to_indices(y), to_indices(x)) : 
+        Placements(to_indices(y))
+
+    (
+        time = time_taken,
+        objective = objective_value(m),
+        model = m,
+        s = placements,
+    )
 end
 
 function mixed_strategies_pricing_placement(
@@ -652,11 +605,7 @@ function mixed_strategies_pricing_placement(
 
     # (24e)
     @constraint(m, [a ∈ eachindex(attackset)], Y[a] == sum(y[:, a]))
-
-    time_taken = @elapsed_time optimize!(m)
-    if ! is_solved_and_feasible(m)
-        return :infeasible
-    end
+    time_taken = @solve_problem!(m)
 
     (
         time = time_taken,
@@ -666,11 +615,10 @@ function mixed_strategies_pricing_placement(
     )
 end
 
-
 function mixed_strategies_pricing_attack(
     g :: MetaGraph,
     K :: Int,
-    placementset :: Vector{Vector{Int}},
+    placementset :: Vector{Placements},
     q :: Vector{Float64};
     optim = DEFAULT_OPTIM,
     tol :: Float64 = 1e-9,
@@ -680,7 +628,6 @@ function mixed_strategies_pricing_attack(
     set_silent(m)
 
     V = nv(g)
-    
 
     active_idxs = [i for (i, val) ∈ enumerate(q) if val > tol]
     S′ = placementset[active_idxs]
@@ -698,8 +645,8 @@ function mixed_strategies_pricing_attack(
     @constraint(m, sum(a) == K)
 
     # (25c)
-    @constraint(m, [(s, placement) ∈ enumerate(S′)], 
-        z[placement, s] .== 1 .- a[placement])
+    @constraint(m, [(s, ps) ∈ enumerate(S′)], 
+        z[all_controllers(ps), s] .== 1 .- a[all_controllers(ps)])
 
 
     # (25d)
@@ -715,10 +662,7 @@ function mixed_strategies_pricing_attack(
     # (25f)
     @constraint(m, [s ∈ eachindex(S′)], F[s] == sum(z[:, s]))
 
-    time_taken = @elapsed_time optimize!(m)
-    if ! is_solved_and_feasible(m)
-        return :infeasible 
-    end
+    time_taken = @solve_problem!(m)
 
     (
         time = time_taken,

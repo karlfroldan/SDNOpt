@@ -1,36 +1,63 @@
+function get_placement(placementlist :: Vector{Vector{Int}}, mixed_strategy :: Vector{Float64})
+    @assert sum(mixed_strategy) ≈ 1.0 "Not a mixed Strategy!"
+    @assert length(placementlist) == length(mixed_strategy) "Distribution does not equal the target set"
+
+    dist = Categorical(mixed_strategy)
+    idx = rand(dist)
+    placementlist[idx]
+end
+
 function mixed_strategies_colgen(
     g :: MetaGraph,
-    M :: Int,
+    P :: Union{Int, IntBound},
+    B :: Union{Int, IntBound},
     K :: Int;
+    C :: Union{Nothing, Int} = nothing,
     optim = DEFAULT_OPTIM,
+    BCC :: Float64 = 0.0,
+    BSC :: Float64 = 0.0,
+    control_capacity :: Dict{Int, Float64} = Dict{Int, Float64}(),
+    control_demand :: Dict{Int, Float64} = Dict{Int, Float64}(),
+    placement_list :: Vector{Placement} = Placement[],
+    placement_difference :: Int = 1,
+    dists :: Union{Matrix{Float64}, Nothing} = nothing
 )
     V = nv(g)
     # Step 0 
     # Initialize list of placements and list of attacks
-    placementset = Vector{Int}[randvec(V, M)]
-    attackset = Vector{Int}[randvec(V, K)]
-    res = mixed_strategies_master(g, placementset, attackset; optim=optim)
+    res = generate_controller_placement(
+        g, P, B; C, optim, BCC, BSC, control_capacity,
+        control_demand, placement_list, placement_difference,
+        dists
+    )
+    placementset = Placements[res.controllers]
+    attackset = Attacks[randvec(V, K)]
 
-    @assert res != :infeasible "Initial solution is infeasible" 
-    (obj, p_star, q_star) = res.objective, res.p_star, res.q_star
-    placement_times = Float64[]
-    attack_times = Float64[]
+    update_master() = begin
+        res = mixed_strategies_master(g, placementset, attackset; optim=optim)
+        @assert res != :infeasible "Master Problem is Infeasible"
+        return res.objective, res.p_star, res.q_star
+    end
+
+    obj, p_star, q_star = update_master()
 
     has_changed = true
 
     xstars = Float64[]
     ystars = Float64[]
 
+    placement_times = Float64[]
+    attack_times = Float64[]
+
     while has_changed
         has_changed = false
         # Step 1
         # Solve the placement gen problem to get placement s′
-        p_res = mixed_strategies_pricing_placement(
-            g, M, attackset, p_star; optim=optim
+        p_res = mixed_strategies_pricing_placement_backup(
+            g, P, B, attackset, p_star;
+            optim, C, BCC, BSC, dists,
         )
 
-        # @show attackset
-        # @show placementset
         @assert p_res != :infeasible "Pricing Placement is infeasible"
         s′ = p_res.s
 
@@ -45,12 +72,7 @@ function mixed_strategies_colgen(
         end
 
         # Step 2 Solve the attack generation problem
-        res = mixed_strategies_master(
-            g, placementset, attackset; optim=optim
-        )
-
-        @assert res != :infeasible "Master Problem is Infeasible"
-        (obj, p_star, q_star) = res.objective, res.p_star, res.q_star
+        obj, p_star, q_star = update_master()
 
         a_res = mixed_strategies_pricing_attack(
             g, K, placementset, q_star; optim=optim,
@@ -69,22 +91,18 @@ function mixed_strategies_colgen(
             end
         end
 
-        res = mixed_strategies_master(
-            g, placementset, attackset; optim=optim
-        )
-
-        @assert res != :infeasible "Master Problem is Infeasible"
-        (obj, p_star, q_star) = res.objective, res.p_star, res.q_star
+        obj, p_star, q_star = update_master()
     end
 
     (
-        attackset = attackset,
-        placementset = placementset,
+        ;
+        attackset,
+        placementset,
+        p_star,
+        q_star,
+        placement_times,
+        attack_times,
         objective = obj,
-        p_star = p_star,
-        q_star = q_star,
-        placement_times = placement_times,
-        attack_times = attack_times,
 
         # Objective value for statistics 
         x_stars = xstars,

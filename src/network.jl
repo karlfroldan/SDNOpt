@@ -12,8 +12,8 @@ struct SDNEdge
 end
 
 load_dognet() = load_network("networks/dognet.dat")
-load_coronet_conus() = load_network("networks/coronet_conus-l.dat")
-load_cost266() = load_network("networks/net-cost266-l.dat")
+load_coronet_conus() = load_network("networks/coronet_conus.dat")
+load_cost266() = load_network("networks/cost266.dat")
 
 # Codes - Internal integer representation for the graph
 function codes_to_labels(g::MetaGraph, codes::Vector{Int})
@@ -155,7 +155,7 @@ function get_distance_matrix(g::AbstractGraph)
     return dists
 end
 
-function surviving_nodes(g :: AbstractGraph, s :: Vector{Int}, a :: Vector{Int})
+function surviving_nodes(g :: AbstractGraph, s :: Vector{Int}, a :: Attacks)
     # Return the surviving nodes (not components) given an attack 
     ag = attack_graph(g, a)
 
@@ -168,12 +168,17 @@ function surviving_nodes(
     g :: AbstractGraph,
     ps :: Vector{Int}, # Primary controllers 
     bs :: Vector{Int}, # Backup controllers 
-    a :: Vector{Int}, # attacks
+    a :: Attacks, # attacks
 )
     ag = attack_graph(g, a)
 
+    # Join the two controllers!
     cs = union(ps, bs)
     Iterators.flatten(
         [collect(labels(c)) for c ∈ components(ag) if !isdisjoint(collect(labels(c)), cs)]
     ) |> collect |> sort
+end
+
+function surviving_nodes(g :: AbstractGraph, ps :: Placements, a :: Attacks)
+    surviving_nodes(g, ps.pc, ps.bc, a)
 end

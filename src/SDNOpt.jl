@@ -6,8 +6,10 @@ using SimpleWeightedGraphs
 using MetaGraphsNext
 using Plots
 using GraphRecipes
-using Random: shuffle
+using Random: shuffle, rand
 using LinearAlgebra
+
+using Distributions
 
 using Base.Iterators
 
@@ -35,7 +37,24 @@ export mixed_strategies_pricing_placement
 ### Exports from algorithm.jl 
 export mixed_strategies_colgen
 
+const IntBound = Tuple{Int, Int}
+
+
+struct Placements
+    pc :: Vector{Int}
+    bc :: Vector{Int}
+
+    Placements(pc :: Vector{Int}, bc :: Vector{Int}) = new(pc, bc)
+    Placements(pc :: Vector{Int}) = new(pc, [])
+end
+
+const Attacks = Vector{Int}
+
+DEFAULT_OPTIM = CPLEX.Optimizer
+
 ### Includes
+include("macros.jl")
+include("utils.jl")
 include("network.jl")
 include("models.jl")
 include("algorithm.jl")
