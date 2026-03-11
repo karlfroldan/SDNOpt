@@ -283,7 +283,7 @@ function generate_controller_placement(
     dists :: Union{Matrix{Float64}, Nothing} = nothing
 )
     # Unfortunately, nvidia cuOpt does not support feasibility.
-    m = Model(HiGHS.Optimizer)
+    m = Model(optim)
     set_silent(m)
     dists = isnothing(dists) ? get_distance_matrix(g) : dists
     V = nv(g)

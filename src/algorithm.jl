@@ -35,7 +35,7 @@ function mixed_strategies_colgen(
     attackset = Attacks[randvec(V, K)]
 
     update_master() = begin
-        res = mixed_strategies_master(g, placementset, attackset; optim=HiGHS.Optimizer)
+        res = mixed_strategies_master(g, placementset, attackset; optim=optim)
         @assert res != :infeasible "Master Problem is Infeasible"
         return res.objective, res.p_star, res.q_star
     end

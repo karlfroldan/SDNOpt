@@ -52,7 +52,7 @@ end
 
 const Attacks = Vector{Int}
 
-DEFAULT_OPTIM = HiGHS.Optimizer
+DEFAULT_OPTIM = CPLEX.Optimizer
 
 struct InfeasibleError <: Exception
     msg::String
