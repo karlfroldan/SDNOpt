@@ -10,6 +10,36 @@ experiment1() = run_experiment(
     2000.0  # BSC
 )
 
+function experiment_pure(g :: MetaGraph; optim=DEFAULT_OPTIM)
+    run_pure_strategies_experiment(
+        g,
+        # Primary controllers 
+        3, 12,
+        # Backup controllers 
+        0, 0,
+        # Attacks 
+        2, 6,
+        nothing,
+        nothing;
+        optim=optim
+    )
+end
+
+function experiment_mixed(g :: MetaGraph; optim=DEFAULT_OPTIM)
+    run_experiment(
+        g,
+        # Primary Controllers 
+        3, 12,
+        # Backup controllers stay at 0
+        0, 0,
+        # Attacks 
+        2, 6,
+        0.0,
+        0.0;
+        optim=optim
+    )
+end
+
 function experiment_pure_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64; optim=DEFAULT_OPTIM)
     BSC_upper = BCC * BCC
 
@@ -20,7 +50,7 @@ function experiment_pure_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64; 
         # Backup controllers 
         0, 0,
         # Attacks 
-        2, 5,
+        2, 6,
         BCC,
         BSC_upper;
         optim=optim
@@ -37,7 +67,7 @@ function experiment_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64; optim
         # Backup controllers stay at 0
         0, 0,
         # Attacks 
-        2, 5,
+        2, 6,
         BCC,
         BSC_upper;
         optim=optim
@@ -52,8 +82,8 @@ function run_pure_strategies_experiment(
     B_end :: Int, 
     K_start :: Int, 
     K_end :: Int,
-    BCC :: Float64 = 0.0,
-    BSC_upper :: Float64 = 0.0;
+    BCC :: Union{Nothing, Float64} = nothing,
+    BSC_upper :: Union{Nothing, Float64} = nothing;
     optim=DEFAULT_OPTIM,
     tol = 1e-9
 )
@@ -78,7 +108,11 @@ function run_pure_strategies_experiment(
                 try
                     C = P + B
                     # Tightest possible BSC 
-                    BSC = maximum_sc_delay(g, P, dists, BSC_upper, BCC)
+                    if !isnothing(BCC)
+                        BSC = maximum_sc_delay(g, P, dists, BSC_upper, BCC)
+                    else
+                        BSC = nothing
+                    end
 
                     res_a1 = pure_controller_placement(
                         g, C, K;
@@ -111,9 +145,24 @@ function run_pure_strategies_experiment(
                         a2_placements = res_a2.placements
                     )
                     
-                    push!(run_log, (P=P, B=B, K=K, C=C, BCC=BCC, BSC=BSC, 
-                                    a1_Y_star=res_a1.Y_star, a2_Z_star=res_a2.Z_star, 
-                                    status=:success, file=filename))
+                    push!(run_log, (
+                        P=P, 
+                        B=B, 
+                        K=K, 
+                        C=C, 
+                        BCC=BCC, 
+                        BSC=BSC,
+                        controller_cpop_time=res_a1.cpop_time_ms,
+                        controller_naop_time=res_a1.naop_time_ms,
+                        attacks_cpop_time=res_a2.cpop_time_ms,
+                        attacks_naop_time=res_a2.naop_time_ms,
+                        controller_iterations=res_a1.iterations,
+                        attack_iterations=res_a2.iterations,
+                        controllers_Y_star=res_a1.Y_star, 
+                        attacks_Z_star=res_a2.Z_star, 
+                        status=:success, 
+                        file=filename
+                    ))
                     println("Saved to $filename")
                 catch e
                     if e isa InfeasibleError
@@ -180,7 +229,12 @@ function run_experiment(
                 try
                     C = P + B
                     # Tightest possible BSC 
-                    BSC = maximum_sc_delay(g, P, dists, BSC_upper, BCC)
+
+                    if BCC > 0.0
+                        BSC = maximum_sc_delay(g, P, dists, BSC_upper, BCC)
+                    else
+                        BSC = 0.0
+                    end
                     res = mixed_strategies_colgen(
                         g, P, B, K;
                         C=C, BCC=BCC, BSC=BSC, dists=dists,
@@ -205,7 +259,20 @@ function run_experiment(
 
                     payoff=res.x_stars[end]
                     
-                    push!(run_log, (P=P, B=B, K=K, C=C, BCC=BCC, BSC=BSC, payoff=payoff, status=:success, file=filename))
+                    push!(run_log, (
+                        P=P, 
+                        B=B, 
+                        K=K, 
+                        C=C, 
+                        BCC=BCC, 
+                        BSC=BSC, 
+                        payoff=payoff, 
+                        placement_time=sum(res.placement_times),
+                        attack_time=sum(res.attack_times),
+                        n_placements=length(res.placementset),
+                        n_attacks=length(res.attackset),
+                        status=:success, 
+                        file=filename))
                     println("Saved to $filename")
                 catch e
                     if e isa InfeasibleError

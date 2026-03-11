@@ -2,3 +2,5 @@
 experiment_results_*
 *.csv
 experiments/
+.local
+csvtool/
