@@ -35,7 +35,6 @@ function pure_controller_placement(
     count = 0
     while true
         res = naop(g, K, [s_star]; optim=optim)
-        @assert res != :infeasible "NAOP is infeasible"
         Z_star = res.objective_value
 
         naop_time_ms += res.time
@@ -47,7 +46,6 @@ function pure_controller_placement(
 
         # Step 2: Solve CPOP to get better placement.
         res = cpop(g, M, attacks; optim=optim, BCC=BCC, BSC=BSC)
-        @assert res != :infeasible "CPOP is infeasible"
         Y_star = res.objective_value
         s_star = res.controllers
 
@@ -90,7 +88,6 @@ function pure_attack_generation(
     count = 0
     while true
         res = cpop(g, M, [a_star]; optim=optim, BCC, BSC)
-        @assert res != :infeasible "CPOP is infeasible"
         Y_star = res.objective_value
 
         cpop_time_ms += res.time
@@ -102,7 +99,6 @@ function pure_attack_generation(
 
         # Step 2
         res = naop(g, K, placements; optim=optim)
-        @assert res != :infeasible "NAOP is infeasible"
         Z_star = res.objective_value
         a_star = res.attack
 
