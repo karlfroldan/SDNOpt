@@ -10,7 +10,7 @@ experiment1() = run_experiment(
     2000.0  # BSC
 )
 
-function experiment_pure_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64)
+function experiment_pure_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64; optim=DEFAULT_OPTIM)
     BSC_upper = BCC * BCC
 
     run_pure_strategies_experiment(
@@ -22,11 +22,12 @@ function experiment_pure_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64)
         # Attacks 
         2, 6,
         BCC,
-        BSC_upper
+        BSC_upper;
+        optim=optim
     )
 end
 
-function experiment_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64)
+function experiment_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64; optim=DEFAULT_OPTIM)
     BSC_upper :: Float64 = 3000.0
 
     run_experiment(
@@ -38,7 +39,8 @@ function experiment_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64)
         # Attacks 
         2, 6,
         BCC,
-        BSC_upper
+        BSC_upper;
+        optim=optim
     )
 end
 
