@@ -19,7 +19,9 @@ function run_experiment(
     K_start :: Int, 
     K_end :: Int,
     BCC :: Float64 = 0.0,
-    BSC :: Float64 = 0.0
+    BSC :: Float64 = 0.0;
+    time_limit :: Float64 = 7200.0,
+    optim=DEFAULT_OPTIM
 )
     dists = get_distance_matrix(g)
     
@@ -43,7 +45,8 @@ function run_experiment(
                     C = P + B
                     res = mixed_strategies_colgen(
                         g, P, B, K;
-                        C=C, BCC=BCC, BSC=BSC, dists=dists
+                        C=C, BCC=BCC, BSC=BSC, dists=dists,
+                        optim=optim, time_limit=time_limit
                     )
 
                     filename = joinpath(outdir, "run_P$(P)_B$(B)_K$(K).jld2")
