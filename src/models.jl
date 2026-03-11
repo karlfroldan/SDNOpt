@@ -1,3 +1,35 @@
+function get_U(
+    g :: MetaGraph, 
+    BCC :: Float64,
+    dists :: Matrix{Float64};
+    tol = 1e-9
+)
+    V = nv(g)
+    [
+        (v, w) for (v, w) ∈ Base.Iterators.product(1:V, 1:V)
+        if v ≤ w && dists[v, w] > BCC - tol
+    ]
+end
+
+function get_Wv(
+    g :: MetaGraph, 
+    BSC :: Float64,
+    dists :: Matrix{Float64};
+    tol = 1e-9
+)
+    V = nv(g)
+    W = Dict{Int, Vector{Int}}()
+
+    for v ∈ 1:V
+        vicinity = [w for w ∈ 1:V if dists[v, w] ≤ BSC + tol] # && v ≤ w]
+        if !isempty(vicinity)
+            W[v] = vicinity
+        end
+    end
+
+    W
+end
+
 ## Paper: Max-Min Optimization of Controller Placements
 ##        vs Min-Max Optimization of Attacks on Nodes in Service Networks
 
@@ -7,11 +39,16 @@ function cpop(
     M :: Int, 
     # The nodes that we want to attack.
     attacks :: Vector{Vector{Int}};
+    dists :: Union{Nothing, Matrix{Float64}} = nothing,
+    BCC :: Union{Nothing, Float64}=nothing,
+    BSC :: Union{Nothing, Float64}=nothing,
     optim = DEFAULT_OPTIM,
 )
     # Find an M-node controller placement given the considered set of attacks
     model = Model(optim)
     set_silent(model)
+
+    dists = isnothing(dists) ? get_distance_matrix(g) : dists
 
     V = nv(g)
     alen = length(attacks)
@@ -57,6 +94,17 @@ function cpop(
         @constraint(model, Y ≤ sum(y[:, a]))
     end
 
+    # controllers must be within BCC distance of each other
+    if !isnothing(BCC)
+        U = get_U(g, BCC, dists)
+        @constraint(model, [(v, w) ∈ U], s[v] + s[w] ≤ 1)
+    end
+
+    if !isnothing(BSC)
+        W = get_Wv(g, BSC, dists)
+        @constraint(model, [v ∈ 1:V], sum(s[W[v]]) ≥ 1)
+    end
+
     time_taken = @solve_problem!(model)
 
     (
@@ -66,7 +114,6 @@ function cpop(
         time = time_taken
     )
 end
-
 
 # Formulation 3.2: Min-Max Node Attack Optimization Problem (NAOP)
 function naop(
@@ -145,113 +192,66 @@ function naop(
     )
 end
 
-# A1: Algorithm for controller placement optimization by means of
-# attack generation 
-function pure_controller_placement(
+function maximum_sc_delay(
     g :: MetaGraph,
-    M :: Int,
-    K :: Int;
-    optim = DEFAULT_OPTIM,
-    tol = 1e-9
-)
-    V = nv(g)
-
-    # Step 0: Generate a random M-Node controller placement s*
-    s_star = randvec(V, M)
-    attacks = Vector{Int}[]
-    Y_star = Float64(V)
-
-    cpop_time_ms = 0.0
-    naop_time_ms = 0.0
-
-    # Step 1: Solve NAOP to get the worst attack given the random placement
-    #         This assures Z* surviving nodes.
-    count = 0
-    while true
-        res = naop(g, K, [s_star]; optim=optim)
-        @assert res != :infeasible "NAOP is infeasible"
-        Z_star = res.objective_value
-
-        naop_time_ms += res.time
-        if Z_star ≥ Y_star - tol
-            break
-        end
-
-        push!(attacks, res.attack)
-
-        # Step 2: Solve CPOP to get better placement.
-        res = cpop(g, M, attacks; optim=optim)
-        @assert res != :infeasible "CPOP is infeasible"
-        Y_star = res.objective_value
-        s_star = res.controllers
-
-        cpop_time_ms += res.time
-
-        count += 1
-    end
-
-    (
-        s_star = s_star,
-        Y_star = Y_star,
-        naop_time_ms = naop_time_ms,
-        cpop_time_ms = cpop_time_ms,
-        iterations = count,
-        attacks = attacks,
-    )
-end
-
-
-# A2: Pure Strategy Attack Generation by means of controller placement optimization
-function pure_attack_generation(
-    g :: MetaGraph,
-    M :: Int,
-    K :: Int;
-    optim = DEFAULT_OPTIM,
+    P :: Union{Int, IntBound},
+    dists :: Matrix{Float64},
+    BSC :: Float64, 
+    BCC :: Float64;
     tol = 1e-9,
+    optim=DEFAULT_OPTIM,
 )
     V = nv(g)
 
-    # Step 0
-    a_star = randvec(V, K)
-    placements = Vector{Int}[]
-    Z_star = 0
+    @assert BSC > 0.0
+    @assert BCC > 0.0
 
-    cpop_time_ms = 0.0
-    naop_time_ms = 0.0
+    P′, P″ = @unpack_bounds(P)
 
-    # Step 1
-    count = 0
-    while true
-        res = cpop(g, M, [a_star]; optim=optim)
-        @assert res != :infeasible "CPOP is infeasible"
-        Y_star = res.objective_value
+    m = Model(optim)
+    set_silent(m)
 
-        cpop_time_ms += res.time
-        if Y_star ≤ Z_star + tol
-            break
-        end
+    # A1i
+    @variable(m, D)
+    
+    # A1h: Controller placements
+    @variable(m, s[1:V], Bin)
+    
+    # A1h: Controller assignments
+    Wv = get_Wv(g, BSC, dists; tol=tol)
+    @variable(m, z[v in keys(Wv), w in Wv[v]], Bin)
 
-        push!(placements, res.controllers)
+    # A1a: Objective function
+    @objective(m, Min, D)
 
-        # Step 2
-        res = naop(g, K, placements; optim=optim)
-        @assert res != :infeasible "NAOP is infeasible"
-        Z_star = res.objective_value
-        a_star = res.attack
-
-        naop_time_ms += res.time
-
-        count += 1
+    # A1b
+    if P′ == P″
+        @constraint(m, sum(s) == P′)
+    else
+        @constraint(m, P′ ≤ sum(s) ≤ P″)
     end
 
-    (
-        a_star = a_star,
-        Z_star = Z_star,
-        naop_time_ms = naop_time_ms,
-        cpop_time_ms = cpop_time_ms,
-        iterations = count,
-        placements = placements,
-    )
+    # A1c
+    U = get_U(g, BCC, dists; tol=tol)
+    for (v, w) ∈ U 
+        @constraint(m, s[v] + s[w] ≤ 1)
+    end
+
+    # A1d
+    @constraint(m, [v ∈ keys(Wv)], sum(z[v, w] for w ∈ Wv[v]) == 1)
+
+    # A1e
+    @constraint(m, [v ∈ keys(Wv), w ∈ Wv[v]; w != v], z[v, w] ≤ s[w])
+
+    # A1f
+    @constraint(m, [v ∈ keys(Wv); v ∈ Wv[v]], z[v, v] == s[v])
+
+    # A1g
+    @constraint(m, [v ∈ keys(Wv)], D ≥ sum(dists[v, w] * z[v, w] for w ∈ Wv[v]))
+
+    @solve_problem!(m)
+    
+    return objective_value(m)
 end
 
 ### FEASIBILITY GENERATION 
@@ -327,7 +327,7 @@ function generate_controller_placement(
 
     if BCC > 0.0
         # println("(2e) activated")
-        U = get_U(g, BCC; dists=dists)
+        U = get_U(g, BCC, dists)
 
         # (2e) Controllers must be able to reach each other inside BCC delay.
         for (v, w) ∈ U
@@ -337,7 +337,7 @@ function generate_controller_placement(
 
     if BSC > 0.0
         # println("(2f) activated")
-        W = get_Wv(g, BSC; dists=dists)
+        W = get_Wv(g, BSC, dists)
         # @show W
         # (2f) Must have one controller in the vicinity of SCD.
 
@@ -384,40 +384,6 @@ function generate_controller_placement(
         model = m,
         # objective_value = Z,
     )
-end
-
-function get_U(
-    g :: MetaGraph, 
-    BCC :: Float64; 
-    dists :: Union{Matrix{Float64}, Nothing},
-    tol = 1e-9
-)
-    V = nv(g)
-    dists = isnothing(dists) ? get_distance_matrix(g) : dists
-    [
-        (v, w) for (v, w) ∈ Base.Iterators.product(1:V, 1:V)
-        if v ≤ w && dists[v, w] > BCC - tol
-    ]
-end
-
-function get_Wv(
-    g :: MetaGraph, 
-    BSC :: Float64; 
-    dists :: Union{Matrix{Float64}, Nothing},
-    tol = 1e-9
-)
-    V = nv(g)
-    W = Dict{Int, Vector{Int}}()
-    dists = isnothing(dists) ? get_distance_matrix(g) : dists
-
-    for v ∈ 1:V
-        vicinity = [w for w ∈ 1:V if dists[v, w] ≤ BSC + tol] # && v ≤ w]
-        if !isempty(vicinity)
-            W[v] = vicinity
-        end
-    end
-
-    W
 end
 
 
@@ -526,12 +492,12 @@ function mixed_strategies_pricing_placement_backup(
 
     # controllers must be within BCC distance of each other
     if BCC > 0.0 
-        U = get_U(g, BCC; dists=dists)
+        U = get_U(g, BCC, dists)
         @constraint(m, [(v, w) ∈ U], y[v] + y[w] ≤ 1)
     end
 
     if BSC > 0.0 
-        W = get_Wv(g, BSC; dists=dists)
+        W = get_Wv(g, BSC, dists)
         @constraint(m, [v ∈ 1:V], sum(y[W[v]]) ≥ 1)
     end
 
@@ -549,6 +515,7 @@ function mixed_strategies_pricing_placement_backup(
 
     @constraint(m,
         [a ∈ 1:alen],
+        # length
         Y[a] == sum([
             let 
                 vs = collect(labels(cs))

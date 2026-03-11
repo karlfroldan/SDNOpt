@@ -1,2 +1,3 @@
 /Manifest*.toml
 experiment_results_*
+*.csv

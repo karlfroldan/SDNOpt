@@ -1,4 +1,6 @@
-function get_placement(placementlist :: Vector{Vector{Int}}, mixed_strategy :: Vector{Float64})
+const TIME_LIMIT = 2.0 * 60.0 * 60.0 # 2 Hours
+
+function get_placement(placementlist::Vector{Vector{Int}}, mixed_strategy::Vector{Float64})
     @assert sum(mixed_strategy) ≈ 1.0 "Not a mixed Strategy!"
     @assert length(placementlist) == length(mixed_strategy) "Distribution does not equal the target set"
 
@@ -7,23 +9,136 @@ function get_placement(placementlist :: Vector{Vector{Int}}, mixed_strategy :: V
     placementlist[idx]
 end
 
-function mixed_strategies_colgen(
+# A1: Algorithm for controller placement optimization by means of
+# attack generation 
+function pure_controller_placement(
     g :: MetaGraph,
-    P :: Union{Int, IntBound},
-    B :: Union{Int, IntBound},
+    M :: Int,
     K :: Int;
-    C :: Union{Nothing, Int} = nothing,
+    BCC :: Union{Nothing, Float64} = nothing,
+    BSC :: Union{Nothing, Float64} = nothing,
     optim = DEFAULT_OPTIM,
-    BCC :: Float64 = 0.0,
-    BSC :: Float64 = 0.0,
-    control_capacity :: Dict{Int, Float64} = Dict{Int, Float64}(),
-    control_demand :: Dict{Int, Float64} = Dict{Int, Float64}(),
-    placement_list :: Vector{Placements} = Placements[],
-    placement_difference :: Int = 1,
-    dists :: Union{Matrix{Float64}, Nothing} = nothing,
-    time_limit :: Float64 = (2 * 60 * 60) # 2 hours
+    tol = 1e-9
 )
     V = nv(g)
+
+    # Step 0: Generate a random M-Node controller placement s*
+    s_star = randvec(V, M)
+    attacks = Vector{Int}[]
+    Y_star = Float64(V)
+
+    cpop_time_ms = 0.0
+    naop_time_ms = 0.0
+
+    # Step 1: Solve NAOP to get the worst attack given the random placement
+    #         This assures Z* surviving nodes.
+    count = 0
+    while true
+        res = naop(g, K, [s_star]; optim=optim)
+        @assert res != :infeasible "NAOP is infeasible"
+        Z_star = res.objective_value
+
+        naop_time_ms += res.time
+        if Z_star ≥ Y_star - tol
+            break
+        end
+
+        push!(attacks, res.attack)
+
+        # Step 2: Solve CPOP to get better placement.
+        res = cpop(g, M, attacks; optim=optim, BCC=BCC, BSC=BSC)
+        @assert res != :infeasible "CPOP is infeasible"
+        Y_star = res.objective_value
+        s_star = res.controllers
+
+        cpop_time_ms += res.time
+
+        count += 1
+    end
+
+    (
+        s_star = s_star,
+        Y_star = Y_star,
+        naop_time_ms = naop_time_ms,
+        cpop_time_ms = cpop_time_ms,
+        iterations = count,
+        attacks = attacks,
+    )
+end
+
+# A2: Pure Strategy Attack Generation by means of controller placement optimization
+function pure_attack_generation(
+    g :: MetaGraph,
+    M :: Int,
+    K :: Int;
+    BCC :: Union{Nothing, Float64} = nothing,
+    BSC :: Union{Nothing, Float64} = nothing,
+    optim = DEFAULT_OPTIM,
+    tol = 1e-9,
+)
+    V = nv(g)
+
+    # Step 0
+    a_star = randvec(V, K)
+    placements = Vector{Int}[]
+    Z_star = 0
+
+    cpop_time_ms = 0.0
+    naop_time_ms = 0.0
+
+    # Step 1
+    count = 0
+    while true
+        res = cpop(g, M, [a_star]; optim=optim, BCC, BSC)
+        @assert res != :infeasible "CPOP is infeasible"
+        Y_star = res.objective_value
+
+        cpop_time_ms += res.time
+        if Y_star ≤ Z_star + tol
+            break
+        end
+
+        push!(placements, res.controllers)
+
+        # Step 2
+        res = naop(g, K, placements; optim=optim)
+        @assert res != :infeasible "NAOP is infeasible"
+        Z_star = res.objective_value
+        a_star = res.attack
+
+        naop_time_ms += res.time
+
+        count += 1
+    end
+
+    (
+        a_star = a_star,
+        Z_star = Z_star,
+        naop_time_ms = naop_time_ms,
+        cpop_time_ms = cpop_time_ms,
+        iterations = count,
+        placements = placements,
+    )
+end
+
+function mixed_strategies_colgen(
+    g::MetaGraph,
+    P::Union{Int,IntBound},
+    B::Union{Int,IntBound},
+    K::Int;
+    C::Union{Nothing,Int}=nothing,
+    optim=DEFAULT_OPTIM,
+    BCC::Float64=0.0,
+    BSC::Float64=0.0,
+    control_capacity::Dict{Int,Float64}=Dict{Int,Float64}(),
+    control_demand::Dict{Int,Float64}=Dict{Int,Float64}(),
+    placement_list::Vector{Placements}=Placements[],
+    placement_difference::Int=1,
+    dists::Union{Matrix{Float64},Nothing}=nothing,
+    time_limit::Float64=TIME_LIMIT
+)
+    V = nv(g)
+
     # Step 0 
     # Initialize list of placements and list of attacks
     res = generate_controller_placement(
@@ -86,7 +201,7 @@ function mixed_strategies_colgen(
         time_limit -= p_res.time
 
         # @assert a_res != :infeasible "Pricing Attack is infeasible"
-        a′ = a_res.a 
+        a′ = a_res.a
 
         push!(attack_times, a_res.time)
         push!(ystars, obj)
@@ -109,10 +224,10 @@ function mixed_strategies_colgen(
         q_star,
         placement_times,
         attack_times,
-        objective = obj,
+        objective=obj,
 
         # Objective value for statistics 
-        x_stars = xstars,
-        y_stars = ystars,
+        x_stars=xstars,
+        y_stars=ystars,
     )
 end
