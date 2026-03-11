@@ -20,7 +20,7 @@ function experiment_pure_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64; 
         # Backup controllers 
         0, 0,
         # Attacks 
-        2, 6,
+        2, 5,
         BCC,
         BSC_upper;
         optim=optim
@@ -37,7 +37,7 @@ function experiment_with_tight_delay_no_bc(g :: MetaGraph, BCC :: Float64; optim
         # Backup controllers stay at 0
         0, 0,
         # Attacks 
-        2, 6,
+        2, 5,
         BCC,
         BSC_upper;
         optim=optim
