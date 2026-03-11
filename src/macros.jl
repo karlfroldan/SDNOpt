@@ -13,6 +13,26 @@ macro elapsed_time(expr)
     end
 end
 
+macro solve_problem!(m)
+    return quote
+        local model = $(esc(m))
+        optimize!(model)
+        local status = termination_status(model)
+
+        if status == MOI.INFEASIBLE || status == MOI.INFEASIBLE_OR_UNBOUNDED
+            throw(InfeasibleError("Optimization failed: Model is infeasible."))
+            
+        elseif status == MOI.TIME_LIMIT
+            throw(TimeLimitError("Optimization failed: Solver reached the time limit."))
+        elseif !is_solved_and_feasible(model)
+            throw(SolverError("Optimization failed: Model is unsolved. Status: $status"))
+        end
+        
+        # Return solving time
+        solve_time(model)
+    end
+end
+
 macro unpack_bounds(var)
     # Generate the assertion message at parse time
     msg = "$(var)′ should be less than or equal to $(var)″"
@@ -26,12 +46,3 @@ macro unpack_bounds(var)
     end
 end
 
-macro solve_problem!(m)
-    return quote
-        local t = @elapsed optimize!($(esc(m)))
-        if !is_solved_and_feasible($(esc(m)))
-            error("Optimization failed: Model is infeasible or unsolved.")
-        end
-        t
-    end
-end

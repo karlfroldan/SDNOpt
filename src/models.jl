@@ -278,7 +278,7 @@ function generate_controller_placement(
     BSC :: Float64 = 0.0,
     control_capacity :: Dict{Int, Float64} = Dict{Int, Float64}(),
     control_demand :: Dict{Int, Float64} = Dict{Int, Float64}(),
-    placement_list :: Vector{Placement} = Placement[],
+    placement_list :: Vector{Placements} = Placement[],
     placement_difference :: Int = 1,
     dists :: Union{Matrix{Float64}, Nothing} = nothing
 )
@@ -480,6 +480,7 @@ function mixed_strategies_pricing_placement_backup(
     BCC :: Float64 = 0.0,
     BSC :: Float64 = 0.0,
     dists :: Union{Nothing, Matrix{Float64}} = nothing,
+    time_limit :: Union{Nothing, Float64} = nothing
 )
     P′, P″ = @unpack_bounds P
     B′, B″ = @unpack_bounds B 
@@ -491,6 +492,10 @@ function mixed_strategies_pricing_placement_backup(
 
     m = Model(optim) 
     set_silent(m)
+
+    if !isnothing(time_limit)
+        set_time_limit_sec(m, time_limit)
+    end
 
     @variables(m, begin
         x[1:V], Bin # Backup controllers 
@@ -622,10 +627,14 @@ function mixed_strategies_pricing_attack(
     q :: Vector{Float64};
     optim = DEFAULT_OPTIM,
     tol :: Float64 = 1e-9,
-
+    time_limit :: Union{Float64} = nothing,
 )
     m = Model(optim)
     set_silent(m)
+
+    if !isnothing(time_limit)
+        set_time_limit_sec(m, time_limit)
+    end
 
     V = nv(g)
 
@@ -647,7 +656,6 @@ function mixed_strategies_pricing_attack(
     # (25c)
     @constraint(m, [(s, ps) ∈ enumerate(S′)], 
         z[all_controllers(ps), s] .== 1 .- a[all_controllers(ps)])
-
 
     # (25d)
     for edge ∈ edges(g)

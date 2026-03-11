@@ -18,9 +18,10 @@ function mixed_strategies_colgen(
     BSC :: Float64 = 0.0,
     control_capacity :: Dict{Int, Float64} = Dict{Int, Float64}(),
     control_demand :: Dict{Int, Float64} = Dict{Int, Float64}(),
-    placement_list :: Vector{Placement} = Placement[],
+    placement_list :: Vector{Placements} = Placements[],
     placement_difference :: Int = 1,
-    dists :: Union{Matrix{Float64}, Nothing} = nothing
+    dists :: Union{Matrix{Float64}, Nothing} = nothing,
+    time_limit :: Float64 = (2 * 60 * 60) # 2 hours
 )
     V = nv(g)
     # Step 0 
@@ -56,9 +57,12 @@ function mixed_strategies_colgen(
         p_res = mixed_strategies_pricing_placement_backup(
             g, P, B, attackset, p_star;
             optim, C, BCC, BSC, dists,
+            time_limit,
         )
 
-        @assert p_res != :infeasible "Pricing Placement is infeasible"
+        time_limit -= p_res.time
+
+        # @assert p_res != :infeasible "Pricing Placement is infeasible"
         s′ = p_res.s
 
         push!(placement_times, p_res.time)
@@ -76,9 +80,12 @@ function mixed_strategies_colgen(
 
         a_res = mixed_strategies_pricing_attack(
             g, K, placementset, q_star; optim=optim,
+            time_limit
         )
 
-        @assert a_res != :infeasible "Pricing Attack is infeasible"
+        time_limit -= p_res.time
+
+        # @assert a_res != :infeasible "Pricing Attack is infeasible"
         a′ = a_res.a 
 
         push!(attack_times, a_res.time)

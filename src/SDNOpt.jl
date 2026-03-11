@@ -8,6 +8,8 @@ using Plots
 using GraphRecipes
 using Random: shuffle, rand
 using LinearAlgebra
+using JLD2
+using Dates
 
 using Distributions
 
@@ -52,11 +54,27 @@ const Attacks = Vector{Int}
 
 DEFAULT_OPTIM = CPLEX.Optimizer
 
+struct InfeasibleError <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::InfeasibleError) = print(io, "InfeasibleError: ", e.msg)
+
+struct TimeLimitError <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::TimeLimitError) = print(io, "TimeLimitError: ", e.msg)
+
+struct SolverError <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::SolverError) = print(io, "SolverError: ", e.msg)
+
 ### Includes
 include("macros.jl")
 include("utils.jl")
 include("network.jl")
 include("models.jl")
 include("algorithm.jl")
+include("experimentation.jl")
 
 end
