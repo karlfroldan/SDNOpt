@@ -1,3 +1,73 @@
+const UNIQUE_NODE :: Int = 1
+
+# Attacks
+function add_uniqueness_constraint!(
+    m::Model, 
+    V::Int, 
+    history::Vector{Attacks}, 
+    diff::Int, 
+    v1::AbstractArray{VariableRef}
+)
+    for T_nodes ∈ history
+        not_T = setdiff(1:V, T_nodes)
+        @constraint(m, 
+            sum(v1[v] for v ∈ T_nodes) - sum(v1[v] for v ∈ not_T) ≤ length(T_nodes) - diff
+        )
+    end
+end
+
+# Placements with one variable 
+function add_uniqueness_constraint!(
+    m::Model, 
+    V::Int, 
+    history::Vector{Placements}, 
+    diff::Int, 
+    vp::AbstractArray{VariableRef}
+)
+    for sol ∈ history
+        Tp = sol.pc
+        not_Tp = setdiff(1:V, Tp)
+        @constraint(m, 
+            sum(vp[v] for v ∈ Tp) - sum(vp[v] for v ∈ not_Tp) ≤ length(Tp) - diff
+        )
+    end
+end
+
+# Placements with primary and backup controllers
+function add_uniqueness_constraint!(
+    m::Model, 
+    V::Int, 
+    history::Vector{Placements}, 
+    diff::Int, 
+    vp::AbstractArray{VariableRef}, 
+    vb::AbstractArray{VariableRef}
+)
+    for sol ∈ history
+        Tp = sol.pc
+        Tb = sol.bc
+        not_Tp = setdiff(1:V, Tp)
+        not_Tb = setdiff(1:V, Tb)
+        
+        @constraint(m, 
+            sum(vp[v] for v ∈ Tp) - sum(vp[v] for v ∈ not_Tp) +
+            sum(vb[v] for v ∈ Tb) - sum(vb[v] for v ∈ not_Tb) ≤ length(Tp) + length(Tb) - diff
+        )
+    end
+end
+
+macro uniqueness_constraints(m, V, history, diff, vars...)
+    return quote
+        add_uniqueness_constraint!(
+            $(esc(m)), 
+            $(esc(V)), 
+            $(esc(history)), 
+            $(esc(diff)), 
+            $(map(esc, vars)...)
+        )
+    end
+end
+
+
 function get_U(
     g :: MetaGraph, 
     BCC :: Float64,
@@ -280,7 +350,8 @@ function generate_controller_placement(
     control_demand :: Dict{Int, Float64} = Dict{Int, Float64}(),
     placement_list :: Vector{Placements} = Placement[],
     placement_difference :: Int = 1,
-    dists :: Union{Matrix{Float64}, Nothing} = nothing
+    dists :: Union{Matrix{Float64}, Nothing} = nothing,
+    history :: Vector{Placements} = Placements[]
 )
     # Unfortunately, nvidia cuOpt does not support feasibility.
     m = Model(optim)
@@ -370,9 +441,7 @@ function generate_controller_placement(
     end
 
     # (2k) Uniqueness constraint
-    for s ∈ placement_list 
-        @constraint(m, sum(y[s.pc]) + sum(x[s.pc]) ≤ placement_difference)
-    end
+    @uniqueness_constraints(m, V, history, UNIQUE_NODE, y, x)
 
     time_taken = @solve_problem!(m)
 
@@ -403,7 +472,7 @@ function mixed_strategies_master(
     set_silent(m)
 
     psize = length(placementset)
-    # asize = length(attackset)
+    asize = length(attackset)
 
     @variable(m, q[1:psize] ≥ 0)
     @variable(m, y)
@@ -414,18 +483,17 @@ function mixed_strategies_master(
     @constraint(m, sum(q) == 1.0)
 
     # (22c)
-    V_coeffs = Dict(
-        a => [
-            length(surviving_nodes(g, s, a))
-            for s ∈ placementset
-        ]
-        for a ∈ attackset
-    )
+    V_mat = zeros(Int, asize, psize)
+    for i ∈ 1:asize
+        for j ∈ 1:psize
+            V_mat[i, j] = length(surviving_nodes(g, placementset[j], attackset[i]))
+        end
+    end
 
-    @constraint(m, con[a in attackset], y ≤ V_coeffs[a] ⋅ q)
+    @constraint(m, con[i=1:asize], y ≤ sum(V_mat[i, j] * q[j] for j ∈ 1:psize))
     time_taken = @solve_problem!(m)
 
-    raw_duals = [dual(con[a]) for a in attackset]
+    raw_duals = [dual(con[i]) for i ∈ 1:asize]
 
     (
         time = time_taken,
@@ -436,7 +504,7 @@ function mixed_strategies_master(
     )
 end
 
-function mixed_strategies_pricing_placement_backup(
+function mixed_strategies_pricing_placement(
     g :: MetaGraph,
     P :: Union{Int, IntBound},
     B :: Union{Int, IntBound},
@@ -447,7 +515,8 @@ function mixed_strategies_pricing_placement_backup(
     BCC :: Float64 = 0.0,
     BSC :: Float64 = 0.0,
     dists :: Union{Nothing, Matrix{Float64}} = nothing,
-    time_limit :: Union{Nothing, Float64} = nothing
+    time_limit :: Union{Nothing, Float64} = nothing,
+    history :: Vector{Placements} = Placements[],
 )
     P′, P″ = @unpack_bounds P
     B′, B″ = @unpack_bounds B 
@@ -525,6 +594,8 @@ function mixed_strategies_pricing_placement_backup(
         ])
     )
 
+    # @uniqueness_constraints(m, V, history, UNIQUE_NODE, y, x)
+
     time_taken = @solve_problem!(m)
 
     placements = B″ > 0 ? 
@@ -539,55 +610,6 @@ function mixed_strategies_pricing_placement_backup(
     )
 end
 
-function mixed_strategies_pricing_placement(
-    g :: MetaGraph,
-    M :: Int,
-    attackset :: Vector{Vector{Int}},
-    p :: Vector{Float64};
-    optim = DEFAULT_OPTIM,
-)
-    m = Model(optim)
-    set_silent(m)
-
-    V = nv(g)
-    alen = length(attackset)
-
-    @variable(m, s[1:V], Bin)
-    @variable(m, y[1:V, 1:alen], Bin)
-    @variable(m, Y[1:alen], Int)
-
-    @objective(m, Max, p ⋅ Y)
-
-    # (24b) Equals P
-    @constraint(m, sum(s) == M)
-
-    # (24c) attacked nodes are 0
-    @constraint(m, [(a, vs) ∈ enumerate(attackset)], y[vs, a] .== 0)
-
-    # (24d) Component survivability
-    for (a, vs) ∈ enumerate(attackset)
-        ag = attack_graph(g, vs)
-
-        @constraint(m,
-            [c ∈ components(ag)], 
-            # LHS: The number of surviving nodes in the components
-            #  should be 0 whenever the RHS is 0.
-            sum(y[collect(labels(c)), a]) ≤ nv(c) * sum(s[collect(labels(c))])
-        )
-    end
-
-    # (24e)
-    @constraint(m, [a ∈ eachindex(attackset)], Y[a] == sum(y[:, a]))
-    time_taken = @solve_problem!(m)
-
-    (
-        time = time_taken,
-        objective = objective_value(m),
-        model = m,
-        s = to_indices(s),
-    )
-end
-
 function mixed_strategies_pricing_attack(
     g :: MetaGraph,
     K :: Int,
@@ -596,6 +618,7 @@ function mixed_strategies_pricing_attack(
     optim = DEFAULT_OPTIM,
     tol :: Float64 = 1e-9,
     time_limit :: Union{Float64} = nothing,
+    history :: Vector{Attacks} = Attacks[],
 )
     m = Model(optim)
     set_silent(m)
@@ -637,6 +660,8 @@ function mixed_strategies_pricing_attack(
 
     # (25f)
     @constraint(m, [s ∈ eachindex(S′)], F[s] == sum(z[:, s]))
+
+    # @uniqueness_constraints(m, V, history, UNIQUE_NODE, a)
 
     time_taken = @solve_problem!(m)
 

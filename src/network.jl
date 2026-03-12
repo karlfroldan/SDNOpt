@@ -160,7 +160,8 @@ function surviving_nodes(g :: AbstractGraph, s :: Vector{Int}, a :: Attacks)
     ag = attack_graph(g, a)
 
     Iterators.flatten(
-        [collect(labels(c)) for c ∈ components(ag) if !isdisjoint(collect(labels(c)), s)]
+        [collect(labels(c)) for c ∈ components(ag) 
+        if !isdisjoint([code_for(g, l) for l in labels(c)], cs)]
     ) |> collect |> sort
 end
 
@@ -175,7 +176,8 @@ function surviving_nodes(
     # Join the two controllers!
     cs = union(ps, bs)
     Iterators.flatten(
-        [collect(labels(c)) for c ∈ components(ag) if !isdisjoint(collect(labels(c)), cs)]
+        [collect(labels(c)) for c ∈ components(ag) 
+        if !isdisjoint([code_for(g, l) for l in labels(c)], cs)]
     ) |> collect |> sort
 end
 

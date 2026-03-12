@@ -165,10 +165,10 @@ function mixed_strategies_colgen(
         has_changed = false
         # Step 1
         # Solve the placement gen problem to get placement s′
-        p_res = mixed_strategies_pricing_placement_backup(
+        p_res = mixed_strategies_pricing_placement(
             g, P, B, attackset, p_star;
             optim, C, BCC, BSC, dists,
-            time_limit,
+            time_limit, history=placementset,
         )
 
         time_limit -= p_res.time
@@ -191,10 +191,10 @@ function mixed_strategies_colgen(
 
         a_res = mixed_strategies_pricing_attack(
             g, K, placementset, q_star; optim=optim,
-            time_limit
+            time_limit, history=attackset,
         )
 
-        time_limit -= p_res.time
+        time_limit -= a_res.time
 
         # @assert a_res != :infeasible "Pricing Attack is infeasible"
         a′ = a_res.a

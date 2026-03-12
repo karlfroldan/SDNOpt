@@ -48,7 +48,17 @@ struct Placements
     bc :: Vector{Int}
 
     Placements(pc :: Vector{Int}, bc :: Vector{Int}) = new(pc, bc)
-    Placements(pc :: Vector{Int}) = new(pc, [])
+    Placements(pc :: Vector{Int}) = new(pc, Int[])
+end
+
+import Base: ==, hash
+
+function ==(a::Placements, b::Placements)
+    return a.pc == b.pc && a.bc == b.bc
+end
+
+function hash(a::Placements, h::UInt)
+    return hash(a.pc, hash(a.bc, h))
 end
 
 const Attacks = Vector{Int}

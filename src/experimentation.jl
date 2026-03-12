@@ -1,14 +1,26 @@
-experiment1() = run_experiment(
-    load_cost266(),
-    # Primary Controllers
-    2, 10,
-    # Backup Controllers 
-    0, 2,
-    # Attacks 
-    2, 6,
-    1500.0, # BCC 
-    2000.0  # BSC
+function calculate_payoff(
+    g :: MetaGraph,
+    placementset :: Vector{Placements},
+    attackset :: Vector{Attacks},
+    p_star :: Vector{Float64},
+    q_star :: Vector{Float64},
 )
+    expected_payoff = 0.0
+    
+    for (s, q) ∈ zip(placementset, q_star)
+        q == 0.0 && continue 
+        
+        for (a, p) ∈ zip(attackset, p_star)
+            p == 0.0 && continue 
+            
+            payoff_value = length(surviving_nodes(g, s, a))
+            @show q, p, payoff_value
+            expected_payoff += q * p * payoff_value
+        end
+    end
+    
+    return expected_payoff
+end
 
 function experiment_pure(g :: MetaGraph; optim=DEFAULT_OPTIM)
     run_pure_strategies_experiment(
