@@ -57,8 +57,8 @@ function load_network(filename :: AbstractString)
 
         if is_parsing_nodes
             id = parse(Int, lsplit[1])
-            loc_x = parse(Float64, lsplit[2])
-            loc_y = parse(Float64, lsplit[3])
+            loc_x = parse(Float64, lsplit[3])
+            loc_y = parse(Float64, lsplit[2])
             str_label = lsplit[4]
             new_node = SDNNode(str_label, id, loc_x, loc_y)
             # @show new_node
@@ -179,6 +179,11 @@ function surviving_nodes(
         [collect(labels(c)) for c ∈ components(ag) 
         if !isdisjoint([code_for(g, l) for l in labels(c)], cs)]
     ) |> collect |> sort
+end
+
+function strings_to_indices(g::MetaGraph, str_labels::Vector{String})
+    str_to_idx = Dict(g[label_for(g, v)][3] => v for v in vertices(g))
+    return [str_to_idx[s] for s in str_labels if haskey(str_to_idx, s)]
 end
 
 function surviving_nodes(g :: AbstractGraph, ps :: Placements, a :: Attacks)
