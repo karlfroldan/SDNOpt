@@ -516,6 +516,8 @@ function mixed_strategies_pricing_placement(
     BSC :: Float64 = 0.0,
     dists :: Union{Nothing, Matrix{Float64}} = nothing,
     time_limit :: Union{Nothing, Float64} = nothing,
+    control_capacity::Dict{Int,Float64}=Dict{Int,Float64}(),
+    control_demand::Dict{Int,Float64}=Dict{Int,Float64}(),
     history :: Vector{Placements} = Placements[],
 )
     P′, P″ = @unpack_bounds P
@@ -537,10 +539,14 @@ function mixed_strategies_pricing_placement(
         x[1:V], Bin # Backup controllers 
         y[1:V], Bin # Primary controllers 
         Y[1:alen]
+        z[1:V, 1:V], Bin
     end)
 
     # Component survivability
-    C_sets = Dict(a => components(attack_graph(g, attack)) for (a, attack) ∈ enumerate(attackset))
+    C_sets = Dict(
+        a => components(attack_graph(g, attack)) 
+        for (a, attack) ∈ enumerate(attackset)
+    )
 
     # S=1 if component survives
     # @variable(m, S[1:alen, 1:length(C_sets)], Bin)
@@ -572,6 +578,11 @@ function mixed_strategies_pricing_placement(
 
     # controllers can only be one type.
     @constraint(m, y .+ x .≤ 1)
+    # Switch-to-controller load capacity constraints
+    if !isempty(control_capacity) && !isempty(control_demand)
+        @constraint(m, [w ∈ 1:V], sum(control_demand[v] * z[v, w] for v ∈ 1:V) ≤ control_capacity[w] * y[w])
+        @constraint(m, [v ∈ 1:V], z[v, v] == y[v])
+    end
     
     # @constraint(m, [a in 1:alen], 
     # println(C_sets)
@@ -612,16 +623,20 @@ end
 
 function mixed_strategies_pricing_attack(
     g :: MetaGraph,
-    K :: Int,
+    K :: Union{Int, IntBound},
     placementset :: Vector{Placements},
     q :: Vector{Float64};
     optim = DEFAULT_OPTIM,
+    R :: Float64 = 0.0,
+    attack_cost :: Dict{Int, Float64} = Dict{Int, Float64}(),
     tol :: Float64 = 1e-9,
     time_limit :: Union{Float64} = nothing,
     history :: Vector{Attacks} = Attacks[],
 )
     m = Model(optim)
     set_silent(m)
+
+    K′, K″ = @unpack_bounds K
 
     if !isnothing(time_limit)
         set_time_limit_sec(m, time_limit)
@@ -642,7 +657,12 @@ function mixed_strategies_pricing_attack(
     @objective(m, Min, q′ ⋅ F)
 
     # (25b)
-    @constraint(m, sum(a) == K)
+    @constraint(m, K′ ≤ sum(a) ≤ K″)
+
+    # Attacker budget constraint
+    if R > 0.0 && !isempty(attack_cost)
+        @constraint(m, sum(attack_cost[v] * a[v] for v ∈ 1:V) ≤ R)
+    end
 
     # (25c)
     @constraint(m, [(s, ps) ∈ enumerate(S′)], 

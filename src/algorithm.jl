@@ -38,6 +38,7 @@ function pure_controller_placement(
         Z_star = res.objective_value
 
         naop_time_ms += res.time
+        local_naop_time = res.time
         if Z_star ≥ Y_star - tol
             break
         end
@@ -50,8 +51,10 @@ function pure_controller_placement(
         s_star = res.controllers
 
         cpop_time_ms += res.time
+        local_cpop_time = res.time
 
         count += 1
+        println("Z_star: $Z_star, Y_star: $Y_star, naop_time: $local_naop_time, cpop_time: $local_cpop_time")
     end
 
     (
@@ -91,6 +94,7 @@ function pure_attack_generation(
         Y_star = res.objective_value
 
         cpop_time_ms += res.time
+        local_cpop_time = res.time
         if Y_star ≤ Z_star + tol
             break
         end
@@ -103,6 +107,9 @@ function pure_attack_generation(
         a_star = res.attack
 
         naop_time_ms += res.time
+        local_naop_time = res.time
+
+        println("Z_star: $Z_star, Y_star: $Y_star, naop_time: $local_naop_time, cpop_time: $local_cpop_time")
 
         count += 1
     end
@@ -121,19 +128,22 @@ function mixed_strategies_colgen(
     g::MetaGraph,
     P::Union{Int,IntBound},
     B::Union{Int,IntBound},
-    K::Int;
+    K::Union{Int,IntBound};
     C::Union{Nothing,Int}=nothing,
     optim=DEFAULT_OPTIM,
     BCC::Float64=0.0,
     BSC::Float64=0.0,
     control_capacity::Dict{Int,Float64}=Dict{Int,Float64}(),
     control_demand::Dict{Int,Float64}=Dict{Int,Float64}(),
+    R::Float64=0.0,
+    attack_cost::Dict{Int,Float64}=Dict{Int,Float64}(),
     placement_list::Vector{Placements}=Placements[],
     placement_difference::Int=1,
     dists::Union{Matrix{Float64},Nothing}=nothing,
     time_limit::Float64=TIME_LIMIT
 )
     V = nv(g)
+    K′, K″ = @unpack_bounds K
 
     # Step 0 
     # Initialize list of placements and list of attacks
@@ -143,7 +153,7 @@ function mixed_strategies_colgen(
         dists
     )
     placementset = Placements[res.controllers]
-    attackset = Attacks[randvec(V, K)]
+    attackset = Attacks[randvec(V, K″)]
 
     update_master() = begin
         res = mixed_strategies_master(g, placementset, attackset; optim=optim)
@@ -168,6 +178,7 @@ function mixed_strategies_colgen(
         p_res = mixed_strategies_pricing_placement(
             g, P, B, attackset, p_star;
             optim, C, BCC, BSC, dists,
+            control_capacity, control_demand,
             time_limit, history=placementset,
         )
 
@@ -191,9 +202,9 @@ function mixed_strategies_colgen(
 
         a_res = mixed_strategies_pricing_attack(
             g, K, placementset, q_star; optim=optim,
+            R, attack_cost,
             time_limit, history=attackset,
         )
-
         time_limit -= a_res.time
 
         # @assert a_res != :infeasible "Pricing Attack is infeasible"

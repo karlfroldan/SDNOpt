@@ -4,3 +4,4 @@ experiment_results_*
 experiments/
 .local
 csvtool/
+*.tikz

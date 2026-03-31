@@ -12,7 +12,7 @@ struct SDNEdge
 end
 
 load_dognet() = load_network("networks/dognet.dat")
-load_coronet_conus() = load_network("networks/coronet_conus.dat")
+load_coronet_conus() = load_network("networks/coronet-conus.dat")
 load_cost266() = load_network("networks/cost266.dat")
 
 # Codes - Internal integer representation for the graph
@@ -59,7 +59,7 @@ function load_network(filename :: AbstractString)
             id = parse(Int, lsplit[1])
             loc_x = parse(Float64, lsplit[3])
             loc_y = parse(Float64, lsplit[2])
-            str_label = lsplit[4]
+            str_label = replace(lsplit[4], '_' => ' ')
             new_node = SDNNode(str_label, id, loc_x, loc_y)
             # @show new_node
             push!(nodes, new_node)
@@ -161,7 +161,7 @@ function surviving_nodes(g :: AbstractGraph, s :: Vector{Int}, a :: Attacks)
 
     Iterators.flatten(
         [collect(labels(c)) for c ∈ components(ag) 
-        if !isdisjoint([code_for(g, l) for l in labels(c)], cs)]
+        if !isdisjoint([code_for(g, l) for l in labels(c)], s)]
     ) |> collect |> sort
 end
 
@@ -188,4 +188,80 @@ end
 
 function surviving_nodes(g :: AbstractGraph, ps :: Placements, a :: Attacks)
     surviving_nodes(g, ps.pc, ps.bc, a)
+end
+
+function shortest_path_tree(g::MetaGraph, root :: Int)
+    root_idx = code_for(g, root)
+    ds = dijkstra_shortest_paths(g, root_idx)
+
+    tree = MetaGraph(
+        SimpleWeightedGraph();
+        label_type = Int, 
+        vertex_data_type = Tuple{Float64, Float64, String},
+        edge_data_type = Float64,
+        weight_function = identity,
+        default_weight = Int,
+    )
+
+    for v_idx ∈ vertices(g)
+        v_label = label_for(g, v_idx)
+        tree[v_label] = g[v_label]
+    end
+
+    for (v_idx, p_idx) ∈ enumerate(ds.parents)
+        # Skip source and unreachable nodes
+        if p_idx != 0 && p_idx != v_idx
+            w_label = label_for(g, p_idx)
+            v_label = label_for(g, v_idx)
+            # Retrieve the edge weight from the original MetaGraph 
+            weight = g[w_label, v_label]
+            tree[w_label, v_label] = weight
+        end
+    end
+    tree
+end
+
+
+#### Experiments helpers
+
+# Attack costs is based on betweenness centrality
+function calculate_attack_costs(g::MetaGraph)
+    costs = Dict{Int, Float64}()
+    # Calculate the betweenness centrality for all vertices
+    bc = betweenness_centrality(g) 
+    
+    for v in 1:nv(g)
+        costs[v] = Float64(bc[v])
+    end
+    return costs
+end
+
+# Attacker budget is the ratio of all attack costs 
+function calculate_attacker_budget(costs::Dict{Int, Float64}, α::Float64)
+    return α * sum(values(costs))
+end
+
+# Number of arrivals per graph
+function calculate_arrivals(g::MetaGraph; multiplier::Float64 = 10.0)
+    λ = Dict{Int, Float64}()
+    for v in 1:nv(g)
+        λ[v] = multiplier * degree(g, v)
+    end
+    return λ
+end
+
+# The value of the capacity for all controllers
+function calculate_uniform_capacity(λ::Dict{Int, Float64}, P_prime::Int; κ=1.0)
+    Λ = sum(values(λ))
+    return κ * Λ / P_prime
+end
+
+# Dictionary mapping for the controller capacity (uniform
+# capacity using `calculate_uniform_capacity`)
+function calculate_capacity_dict(g::MetaGraph, capacity_value::Float64)
+    C_dict = Dict{Int, Float64}()
+    for v in 1:nv(g)
+        C_dict[v] = capacity_value
+    end
+    return C_dict
 end

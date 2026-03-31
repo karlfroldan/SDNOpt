@@ -19,13 +19,12 @@ using Base.Iterators
 using JuMP
 
 # Optimizers
-import SCIP
-import HiGHS
 import CPLEX
 
 ### Exports from network.jl
 export attack_graph, plot_network, components, distance_matrix
 export load_dognet, load_cost266, load_coronet_conus, load_network
+export shortest_path_tree
 
 export μs2s
 
@@ -36,12 +35,17 @@ export cpop, naop, pure_attack_generation, pure_controller_placement
 
 export mixed_strategies_master, mixed_strategies_pricing_attack
 export mixed_strategies_pricing_placement
+export mixed_strategies_pricing_attack_benders
 
 ### Exports from algorithm.jl 
 export mixed_strategies_colgen
 
-const IntBound = Tuple{Int, Int}
+### Exports from network_plot.jl
+export generate_tikz
 
+export Placements
+
+const IntBound = Tuple{Int, Int}
 
 struct Placements
     pc :: Vector{Int}
