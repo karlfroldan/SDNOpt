@@ -199,8 +199,8 @@ function calculate_node_probabilities(
 )
     node_probs = Dict{Int, Float64}()
 
-    for (strategy, prob) ∈ zip(strategies, probabilities)
-        for v ∈ strategy
+    for (strategy, prob) in zip(strategies, probabilities)
+        for v in strategy
             node_probs[v] = get(node_probs, v, 0.0) + prob
         end
     end

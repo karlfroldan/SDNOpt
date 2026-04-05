@@ -140,7 +140,7 @@ end
 
 function incident_edges(g :: MetaGraph, v :: Int)
     v_idx = code_for(g, v)
-    [e for e ∈ edges(g) if e.src == v_idx || e.dst == v_idx]
+    [e for e in edges(g) if e.src == v_idx || e.dst == v_idx]
 end
 
 function get_distance_matrix(g::AbstractGraph)
@@ -160,7 +160,7 @@ function surviving_nodes(g :: AbstractGraph, s :: Vector{Int}, a :: Attacks)
     ag = attack_graph(g, a)
 
     Iterators.flatten(
-        [collect(labels(c)) for c ∈ components(ag) 
+        [collect(labels(c)) for c in components(ag) 
         if !isdisjoint([code_for(g, l) for l in labels(c)], s)]
     ) |> collect |> sort
 end
@@ -176,7 +176,7 @@ function surviving_nodes(
     # Join the two controllers!
     cs = union(ps, bs)
     Iterators.flatten(
-        [collect(labels(c)) for c ∈ components(ag) 
+        [collect(labels(c)) for c in components(ag) 
         if !isdisjoint([code_for(g, l) for l in labels(c)], cs)]
     ) |> collect |> sort
 end
@@ -203,12 +203,12 @@ function shortest_path_tree(g::MetaGraph, root :: Int)
         default_weight = Int,
     )
 
-    for v_idx ∈ vertices(g)
+    for v_idx in vertices(g)
         v_label = label_for(g, v_idx)
         tree[v_label] = g[v_label]
     end
 
-    for (v_idx, p_idx) ∈ enumerate(ds.parents)
+    for (v_idx, p_idx) in enumerate(ds.parents)
         # Skip source and unreachable nodes
         if p_idx != 0 && p_idx != v_idx
             w_label = label_for(g, p_idx)

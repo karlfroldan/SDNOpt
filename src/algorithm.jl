@@ -189,8 +189,8 @@ function mixed_strategies_colgen(
         push!(placement_times, p_res.time)
         push!(xstars, obj)
 
-        if [length(surviving_nodes(g, s′, a)) for a ∈ attackset] ⋅ p_star > obj
-            if !(s′ ∈ placementset)
+        if [length(surviving_nodes(g, s′, a)) for a in attackset] ⋅ p_star > obj
+            if !(s′ in placementset)
                 push!(placementset, s′)
                 has_changed = true
             end
@@ -212,8 +212,8 @@ function mixed_strategies_colgen(
         push!(attack_times, a_res.time)
         push!(ystars, obj)
 
-        if obj > [length(surviving_nodes(g, s, a′)) for s ∈ placementset] ⋅ q_star
-            if !(a′ ∈ attackset)
+        if obj > [length(surviving_nodes(g, s, a′)) for s in placementset] ⋅ q_star
+            if !(a′ in attackset)
                 push!(attackset, a′)
                 has_changed = true
             end

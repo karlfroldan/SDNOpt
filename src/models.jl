@@ -8,10 +8,10 @@ function add_uniqueness_constraint!(
     diff::Int, 
     v1::AbstractArray{VariableRef}
 )
-    for T_nodes ∈ history
+    for T_nodes in history
         not_T = setdiff(1:V, T_nodes)
         @constraint(m, 
-            sum(v1[v] for v ∈ T_nodes) - sum(v1[v] for v ∈ not_T) ≤ length(T_nodes) - diff
+            sum(v1[v] for v in T_nodes) - sum(v1[v] for v in not_T) ≤ length(T_nodes) - diff
         )
     end
 end
@@ -24,11 +24,11 @@ function add_uniqueness_constraint!(
     diff::Int, 
     vp::AbstractArray{VariableRef}
 )
-    for sol ∈ history
+    for sol in history
         Tp = sol.pc
         not_Tp = setdiff(1:V, Tp)
         @constraint(m, 
-            sum(vp[v] for v ∈ Tp) - sum(vp[v] for v ∈ not_Tp) ≤ length(Tp) - diff
+            sum(vp[v] for v in Tp) - sum(vp[v] for v in not_Tp) ≤ length(Tp) - diff
         )
     end
 end
@@ -42,15 +42,15 @@ function add_uniqueness_constraint!(
     vp::AbstractArray{VariableRef}, 
     vb::AbstractArray{VariableRef}
 )
-    for sol ∈ history
+    for sol in history
         Tp = sol.pc
         Tb = sol.bc
         not_Tp = setdiff(1:V, Tp)
         not_Tb = setdiff(1:V, Tb)
         
         @constraint(m, 
-            sum(vp[v] for v ∈ Tp) - sum(vp[v] for v ∈ not_Tp) +
-            sum(vb[v] for v ∈ Tb) - sum(vb[v] for v ∈ not_Tb) ≤ length(Tp) + length(Tb) - diff
+            sum(vp[v] for v in Tp) - sum(vp[v] for v in not_Tp) +
+            sum(vb[v] for v in Tb) - sum(vb[v] for v in not_Tb) ≤ length(Tp) + length(Tb) - diff
         )
     end
 end
@@ -86,7 +86,7 @@ function get_U(
 )
     V, _ = size(dists)
     [
-        (v, w) for (v, w) ∈ Base.Iterators.product(1:V, 1:V)
+        (v, w) for (v, w) in Base.Iterators.product(1:V, 1:V)
         if v ≤ w && dists[v, w] > BCC - tol
     ]
 end
@@ -99,8 +99,8 @@ function get_Wv(
     V, _ = size(dists)
     W = Dict{Int, Vector{Int}}()
 
-    for v ∈ 1:V
-        vicinity = [w for w ∈ 1:V if dists[v, w] ≤ BSC + tol] # && v ≤ w]
+    for v in 1:V
+        vicinity = [w for w in 1:V if dists[v, w] ≤ BSC + tol] # && v ≤ w]
         if !isempty(vicinity)
             W[v] = vicinity
         end
@@ -162,15 +162,15 @@ function add_delay_constraints!(
     s = m[:s]
     # Controller-to-controller delays
     U = get_U(BCC, dists)
-    @constraint(m, [(v, w) ∈ U], s[v] + s[w] ≤ 1)
+    @constraint(m, [(v, w) in U], s[v] + s[w] ≤ 1)
 
     W = get_Wv(BSC, dists)
     if !isnothing(capacity_constraints)
         # We use the information about capacity constraints 
         h = m[:h] # h[i, j] = switch i is assigned to controller j
-        @constraint(model, [v ∈ 1:V], sum(h[v, W[v]]) == 1)
+        @constraint(model, [v in 1:V], sum(h[v, W[v]]) == 1)
     else
-        @constraint(model, [v ∈ 1:V], sum(s[W[v]]) ≥ 1)
+        @constraint(model, [v in 1:V], sum(s[W[v]]) ≥ 1)
     end
 end
 
@@ -186,9 +186,9 @@ function add_capacity_constraints!(
 
     arrivals = capacity_constraints.arrivals
     controller_capacity = capacity_constraints.controller_capacity
-    cd = [arrivals[v] for v ∈ 1:V]
-    cc = [controller_capacity[v] for v ∈ 1:V]
-    for w ∈ 1:V
+    cd = [arrivals[v] for v in 1:V]
+    cc = [controller_capacity[v] for v in 1:V]
+    for w in 1:V
         @constraint(m, cd ⋅ h[:, w] ≤ cc[w] * s[w])
     end
 end
@@ -207,7 +207,7 @@ function add_survivability_constraints!(
 
     C_sets = Dict(
         a => components(attack_graph(g, attack)) 
-        for (a, attack) ∈ enumerate(attackset)
+        for (a, attack) in enumerate(attackset)
     )
 
     # Component Survivability variable 
@@ -219,8 +219,8 @@ function add_survivability_constraints!(
 
     # Component c survives if there is another controller in the 
     # given component.
-    for a ∈ 1:alen 
-        for (c, comp) ∈ enumerate(C_sets[a])
+    for a in 1:alen 
+        for (c, comp) in enumerate(C_sets[a])
             vs = collect(labels(comp))
             if isnothing(controller_constraints)
                 @constraint(m, S[a, c] .≤ sum(s[vs]))
@@ -235,14 +235,14 @@ function add_survivability_constraints!(
 
     # Count the number of surviving nodes.
     @constraint(m,
-        [a ∈ 1:alen],
+        [a in 1:alen],
         # length
         Y[a] == sum([
             let 
                 vs = collect(labels(cs))
                 length(vs) * S[a, c]
             end
-            for (c, cs) ∈ enumerate(C_sets[a])
+            for (c, cs) in enumerate(C_sets[a])
         ])
     )
 end
@@ -285,17 +285,17 @@ function cpop(
     @constraint(model, sum(s) == M)
 
     # 3c - all attacked nodes are zeroed out
-    for a ∈ 1:alen
+    for a in 1:alen
         @constraint(model, y[attacks[a], a] .== 0)
     end
 
     # 3d - All nodes in components without controllers are zeroed out
-    for a ∈ 1:alen
+    for a in 1:alen
         ag = attack_graph(g, attacks[a])
         cs = components(ag)
 
         # The surviving nodes after the attack
-        for comp ∈ cs
+        for comp in cs
             # Vertices of comp are 1:size(comp)
             # Get their labels instead and then map those labels to codes.
             comp_labels = collect(labels(comp))
@@ -314,12 +314,12 @@ function cpop(
     # controllers must be within BCC distance of each other
     if !isnothing(BCC)
         U = get_U(BCC, dists)
-        @constraint(model, [(v, w) ∈ U], s[v] + s[w] ≤ 1)
+        @constraint(model, [(v, w) in U], s[v] + s[w] ≤ 1)
     end
 
     if !isnothing(BSC)
         W = get_Wv(BSC, dists)
-        @constraint(model, [v ∈ 1:V], sum(s[W[v]]) ≥ 1)
+        @constraint(model, [v in 1:V], sum(s[W[v]]) ≥ 1)
     end
 
     time_taken = @solve_problem!(model)
@@ -357,8 +357,8 @@ function naop(
     @constraint(model, sum(a) == K)
 
     # 5c - Link is down after attack a
-    for v ∈ 1:V
-        for (e, edge) ∈ enumerate(edges(g))
+    for v in 1:V
+        for (e, edge) in enumerate(edges(g))
             if edge.src == v || edge.dst == v 
                 @constraint(model, t[e] ≥ a[v])
             end
@@ -366,28 +366,28 @@ function naop(
     end
 
     # 5d - Link is down after attack a
-    for (e, edge) ∈ enumerate(edges(g))
+    for (e, edge) in enumerate(edges(g))
         α, β = edge.src, edge.dst
         @constraint(model, t[e] ≤ a[α] + a[β])
     end
 
     # 5e - Node v does not survive attack a if node v is attacked directly
-    for s ∈ 1:S 
+    for s in 1:S 
         @constraint(model, z[:, s] .≤ 1 .- a)
     end
 
     # 5f - Node v survives attack a when placement s is assumed if
     #      node v is not directly attacked and its location contains 
     #      a controller
-    for (s, placement) ∈ enumerate(placements)
+    for (s, placement) in enumerate(placements)
         @constraint(model, z[placement, s] .≥ 1 .- a[placement])
     end
 
     # 5g and 5h - Make sure that if link e is available after attack a, then
     #             its end nodes either simultaneaously suvive or both are out
     #             of service.
-    for s ∈ 1:S
-        for (e, edge) ∈ enumerate(edges(g))
+    for s in 1:S
+        for (e, edge) in enumerate(edges(g))
             α, β = edge.src, edge.dst
             @constraint(model, z[α, s] ≥ z[β, s] - t[e])
             @constraint(model, z[β, s] ≥ z[α, s] - t[e])
@@ -395,7 +395,7 @@ function naop(
     end
 
     # 5i 
-    for s ∈ 1:S 
+    for s in 1:S 
         @constraint(model, Z ≥ sum(z[:, s]))
     end
 
@@ -450,21 +450,21 @@ function maximum_sc_delay(
 
     # A1c
     U = get_U(BCC, dists; tol=tol)
-    for (v, w) ∈ U 
+    for (v, w) in U 
         @constraint(m, s[v] + s[w] ≤ 1)
     end
 
     # A1d
-    @constraint(m, [v ∈ keys(Wv)], sum(z[v, w] for w ∈ Wv[v]) == 1)
+    @constraint(m, [v in keys(Wv)], sum(z[v, w] for w in Wv[v]) == 1)
 
     # A1e
-    @constraint(m, [v ∈ keys(Wv), w ∈ Wv[v]; w != v], z[v, w] ≤ s[w])
+    @constraint(m, [v in keys(Wv), w in Wv[v]; w != v], z[v, w] ≤ s[w])
 
     # A1f
-    @constraint(m, [v ∈ keys(Wv); v ∈ Wv[v]], z[v, v] == s[v])
+    @constraint(m, [v in keys(Wv); v in Wv[v]], z[v, v] == s[v])
 
     # A1g
-    @constraint(m, [v ∈ keys(Wv)], D ≥ sum(dists[v, w] * z[v, w] for w ∈ Wv[v]))
+    @constraint(m, [v in keys(Wv)], D ≥ sum(dists[v, w] * z[v, w] for w in Wv[v]))
 
     @solve_problem!(m)
     
@@ -477,11 +477,11 @@ end
 # max Z 
 # s.t. sum {v in VERTICES} y[v] = M
 #      {{v, w} in U} y[v] + y[w] ≤ 1
-#      {v in VERTICES} sum {w ∈ W(v)} y[w] ≥ 1
-#      l=1,2,…,L, sum {v ∈ T(l)} y[v] ≤ m 
-#      {v in VERTICES} y[v] ∈ B
+#      {v in VERTICES} sum {w in W(v)} y[w] ≥ 1
+#      l=1,2,…,L, sum {v in T(l)} y[v] ≤ m 
+#      {v in VERTICES} y[v] in B
 # where T(l) denotes the set of nodes where controllers of the generated
-# placement number l∈1,2,…,L are located.
+# placement number lin1,2,…,L are located.
 
 # For cost266 
 # - P* = 3, tight CCD BCC = 1500, P* = 5 BCC = 2000 
@@ -559,16 +559,16 @@ function mixed_strategies_master(
 
     # (22c)
     V_mat = zeros(Int, asize, psize)
-    for i ∈ 1:asize
-        for j ∈ 1:psize
+    for i in 1:asize
+        for j in 1:psize
             V_mat[i, j] = length(surviving_nodes(g, placementset[j], attackset[i]))
         end
     end
 
-    @constraint(m, con[i=1:asize], y ≤ sum(V_mat[i, j] * q[j] for j ∈ 1:psize))
+    @constraint(m, con[i=1:asize], y ≤ sum(V_mat[i, j] * q[j] for j in 1:psize))
     time_taken = @solve_problem!(m)
 
-    raw_duals = [dual(con[i]) for i ∈ 1:asize]
+    raw_duals = [dual(con[i]) for i in 1:asize]
 
     (
         time = time_taken,
@@ -645,7 +645,7 @@ function mixed_strategies_pricing_attack(
 
     V = nv(g)
 
-    active_idxs = [i for (i, val) ∈ enumerate(q) if val > tol]
+    active_idxs = [i for (i, val) in enumerate(q) if val > tol]
     S′ = placementset[active_idxs]
     q′ = q[active_idxs]
 
@@ -662,25 +662,25 @@ function mixed_strategies_pricing_attack(
 
     # Attacker budget constraint
     if !isnothing(R) && !isempty(attack_cost)
-        @constraint(m, sum(attack_cost[v] * a[v] for v ∈ 1:V) ≤ R)
+        @constraint(m, sum(attack_cost[v] * a[v] for v in 1:V) ≤ R)
     end
 
     # (25c)
-    @constraint(m, [(s, ps) ∈ enumerate(S′)], 
+    @constraint(m, [(s, ps) in enumerate(S′)], 
         z[all_controllers(ps), s] .== 1 .- a[all_controllers(ps)])
 
     # (25d)
-    for edge ∈ edges(g)
+    for edge in edges(g)
         α, β = edge.src, edge.dst
-        @constraint(m, [s ∈ eachindex(S′)], 
+        @constraint(m, [s in eachindex(S′)], 
             z[β, s] .≥ z[α, s] .- a[β])
 
-        @constraint(m, [s ∈ eachindex(S′)],
+        @constraint(m, [s in eachindex(S′)],
             z[α, s] .≥ z[β, s] .- a[α])
     end
 
     # (25f)
-    @constraint(m, [s ∈ eachindex(S′)], F[s] == sum(z[:, s]))
+    @constraint(m, [s in eachindex(S′)], F[s] == sum(z[:, s]))
 
     # @uniqueness_constraints(m, V, history, UNIQUE_NODE, a)
 
