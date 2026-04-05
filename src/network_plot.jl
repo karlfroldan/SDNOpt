@@ -192,6 +192,21 @@ function calculate_tikz_label_position(g::MetaGraph, v::Int, x_coords::AbstractV
     return positions[octant]
 end
 
+# Calculate the marginal probability.
+function calculate_node_probabilities(
+    strategies::Vector{Vector{Int}},
+    probabilities::Vector{Float64},
+)
+    node_probs = Dict{Int, Float64}()
+
+    for (strategy, prob) ∈ zip(strategies, probabilities)
+        for v ∈ strategy
+            node_probs[v] = get(node_probs, v, 0.0) + prob
+        end
+    end
+
+    node_probs
+end
 
 function generate_tikz(
     g::MetaGraph;
@@ -322,6 +337,118 @@ function generate_tikz(
         
         println(io, "  \\draw[$edge_style] ($tikz_u) -- ($tikz_v);")
     end
+
+    println(io, "\n\\end{tikzpicture}")
+    latex_str = String(take!(io))
+
+    if !isnothing(save_path)
+        open(save_path, "w") do f
+            write(f, latex_str)
+        end
+    end
+
+    return latex_str
+end
+
+function generate_heatmap_tikz(
+    g::MetaGraph,
+    node_probs::Dict{Int, Float64};
+    color::String = "black",
+    show_labels::Bool=true,
+    save_path::Union{String, Nothing}=nothing,
+    rotate_deg::Real=0.0,
+    flip_x::Bool=false,
+    flip_y::Bool=false
+)
+    # Assume extract_coordinates and calculate_tikz_label_position are defined elsewhere
+    x_coords, y_coords, locs = extract_coordinates(g)
+    
+    # Transformations
+    transformed_locs = Dict()
+    rad = deg2rad(rotate_deg)
+    
+    for v in vertices(g)
+        x, y = locs[v][1], locs[v][2]
+        
+        # Apply rotation
+        if rotate_deg != 0.0
+            x_rot = x * cos(rad) - y * sin(rad)
+            y_rot = x * sin(rad) + y * cos(rad)
+            x, y = x_rot, y_rot
+        end
+        
+        # Apply flips
+        if flip_x; x = -x; end
+        if flip_y; y = -y; end
+
+        transformed_locs[v] = tuple(x, y, locs[v][3:end]...)
+    end
+    
+    locs = transformed_locs
+    
+    # Find the maximum probability for normalization
+    max_prob = isempty(node_probs) ? 1.0 : maximum(values(node_probs))
+
+    io = IOBuffer()
+    println(io, "\\begin{tikzpicture}[scale=0.25]\n")
+    
+    println(io, "  % --- STYLES ---")
+    println(io, "  \\tikzset{")
+    println(io, "    every label/.append style={font=\\scriptsize, label distance=-1pt},")
+    println(io, "    v_base/.style = {circle, draw=black, thin, inner sep=1.2pt},")
+    println(io, "    e/.style = {-, thin, black}")
+    println(io, "  }\n")
+    
+    println(io, "  % --- NODES ---")
+    sorted_vertices = sort(collect(vertices(g)))
+    
+    for v in sorted_vertices
+        x = round(locs[v][1], digits=4)
+        y = round(locs[v][2], digits=4)
+        
+        tikz_id = "node_$v"
+
+        # Calculate normalized color intensity
+        prob = get(node_probs, v, 0.0)
+        
+        if max_prob > 0
+            # Scale intensity relative to the maximum probability
+            intensity = round(Int, (prob / max_prob) * 100)
+        else
+            intensity = 0
+        end
+        
+        # Mix red with blue
+        fill_color = "red!$(intensity)!blue"
+        
+        if show_labels
+            label_pos = calculate_tikz_label_position(g, v, [locs[i][1] for i in vertices(g)], [locs[i][2] for i in vertices(g)])
+            node_options = "v_base, fill=$fill_color, label={$label_pos:{$v}}"
+        else
+            node_options = "v_base, fill=$fill_color"
+        end
+        
+        println(io, "  \\node[$node_options] ($tikz_id) at ($x, $y) {};")
+    end
+    
+    println(io, "\n  % --- LINKS ---")
+    for e in edges(g)
+        u, v = src(e), dst(e)
+        println(io, "  \\draw[e] (node_$u) -- (node_$v);")
+    end
+
+    println(io, "\n  % --- LEGEND ---")
+    max_str = round(max_prob, digits=3)
+    mid_str = round(max_prob / 2, digits=3)
+    
+    # Use current bounding box to shift the legend safely outside the network
+    println(io, "  \\begin{scope}[shift={(current bounding box.north east)}, xshift=1.5cm, yshift=0cm]")
+    println(io, "    \\node[right, font=\\scriptsize, yshift=0.3cm] at (0, 0) {Probability};")
+    println(io, "    \\shade[top color=red, bottom color=blue] (0, 0) rectangle (0.5, -4);")
+    println(io, "    \\node[right, font=\\scriptsize] at (0.5, 0) {$max_str};")
+    println(io, "    \\node[right, font=\\scriptsize] at (0.5, -2) {$mid_str};")
+    println(io, "    \\node[right, font=\\scriptsize] at (0.5, -4) {0.0};")
+    println(io, "  \\end{scope}")
 
     println(io, "\n\\end{tikzpicture}")
     latex_str = String(take!(io))

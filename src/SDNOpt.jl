@@ -1,10 +1,12 @@
 module SDNOpt
 
+using Base: @kwdef
 using Printf: @printf, @sprintf
 using Graphs
 using SimpleWeightedGraphs
 using MetaGraphsNext
 using Plots
+using Parameters: @with_kw
 using GraphRecipes
 using Random: shuffle, rand
 using LinearAlgebra
@@ -25,6 +27,8 @@ import CPLEX
 export attack_graph, plot_network, components, distance_matrix
 export load_dognet, load_cost266, load_coronet_conus, load_network
 export shortest_path_tree
+export calculate_arrivals, calculate_attack_costs, calculate_attacker_budget
+export calculate_capacity_dict
 
 export μs2s
 
@@ -41,31 +45,13 @@ export mixed_strategies_pricing_attack_benders
 export mixed_strategies_colgen
 
 ### Exports from network_plot.jl
-export generate_tikz
+export generate_tikz, generate_heatmap_tikz, calculate_node_probabilities
 
-export Placements
-
-const IntBound = Tuple{Int, Int}
-
-struct Placements
-    pc :: Vector{Int}
-    bc :: Vector{Int}
-
-    Placements(pc :: Vector{Int}, bc :: Vector{Int}) = new(pc, bc)
-    Placements(pc :: Vector{Int}) = new(pc, Int[])
-end
+### Exports from structs.jl
+export Placements, Attacks, PlacementConfig, AttackConfig
+export ControllerConstraints, DelayConstraintsConfig, CapacityConstraintsConfig
 
 import Base: ==, hash
-
-function ==(a::Placements, b::Placements)
-    return a.pc == b.pc && a.bc == b.bc
-end
-
-function hash(a::Placements, h::UInt)
-    return hash(a.pc, hash(a.bc, h))
-end
-
-const Attacks = Vector{Int}
 
 DEFAULT_OPTIM = CPLEX.Optimizer
 
@@ -86,11 +72,11 @@ Base.showerror(io::IO, e::SolverError) = print(io, "SolverError: ", e.msg)
 
 ### Includes
 include("macros.jl")
+include("structs.jl")
 include("utils.jl")
 include("network.jl")
 include("network_plot.jl")
 include("models.jl")
 include("algorithm.jl")
-include("experimentation.jl")
 
 end

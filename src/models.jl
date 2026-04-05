@@ -55,6 +55,17 @@ function add_uniqueness_constraint!(
     end
 end
 
+function get_controller_placements(model::Model; with_backups=False)
+    assert_is_solved_and_feasible(model)
+    s = model[:s]
+    if with_backups
+        r = model[:r]
+        return Placements(to_indices(s), to_indices(r))
+    end
+
+    return Placements(to_indices(s))
+end
+
 macro uniqueness_constraints(m, V, history, diff, vars...)
     return quote
         add_uniqueness_constraint!(
@@ -69,12 +80,11 @@ end
 
 
 function get_U(
-    g :: MetaGraph, 
     BCC :: Float64,
     dists :: Matrix{Float64};
     tol = 1e-9
 )
-    V = nv(g)
+    V, _ = size(dists)
     [
         (v, w) for (v, w) ∈ Base.Iterators.product(1:V, 1:V)
         if v ≤ w && dists[v, w] > BCC - tol
@@ -82,12 +92,11 @@ function get_U(
 end
 
 function get_Wv(
-    g :: MetaGraph, 
     BSC :: Float64,
     dists :: Matrix{Float64};
     tol = 1e-9
 )
-    V = nv(g)
+    V, _ = size(dists)
     W = Dict{Int, Vector{Int}}()
 
     for v ∈ 1:V
@@ -98,6 +107,144 @@ function get_Wv(
     end
 
     W
+end
+
+function add_controllers!(
+    g::MetaGraph,
+    m::Model,
+    placement_config::PlacementConfig;
+    controller_constraints::Union{ControllerConstraints, Nothing}=nothing,
+)
+    V = nv(g)
+    M = placement_config.M
+
+    # Primary controller placement
+    @variable(m, s[1:V], Bin)
+
+    if isnothing(controller_constraints)
+        # Total number of controllers must equal M.
+        @constraint(m, sum(s) == M)
+    else
+        P′ = controller_constraints.P′
+        P″ = controller_constraints.P″
+        B′ = controller_constraints.B′
+        B″ = controller_constraints.B″
+        # There are backup controllers.
+        @variable(m, r[1:V], Bin)
+
+        # Total number of controllers 
+        @constraint(m, sum(s) + sum(r) == m)
+
+        # Bounds on the primary and backup controllers.
+        @constraint(m, P′ ≤ sum(s) ≤ P″)
+        @constraint(m, B′ ≤ sum(r) ≤ B″)
+
+        # Ensure that a controller is of only one type.
+        # * s[v] == 1 : primary controller
+        # * r[v] == 1 : backup controller
+        # * s[v] + r[v] == 0 : switch 
+        @constraint(m, s .+ r .≤ 1)
+    end
+end
+
+function add_delay_constraints!(
+    g::MetaGraph,
+    m::Model,
+    delay_constraints::DelayConstraintsConfig;
+    capacity_constraints::Union{CapacityConstraintsConfig, Nothing}=nothing,
+)
+    dists = delay_constraints.distance_matrix
+    BCC = delay_constraints.BCC
+    BSC = delay_constraints.BSC
+
+    V = nv(g)
+
+    s = m[:s]
+    # Controller-to-controller delays
+    U = get_U(BCC, dists)
+    @constraint(m, [(v, w) ∈ U], s[v] + s[w] ≤ 1)
+
+    W = get_Wv(BSC, dists)
+    if !isnothing(capacity_constraints)
+        # We use the information about capacity constraints 
+        h = m[:h] # h[i, j] = switch i is assigned to controller j
+        @constraint(model, [v ∈ 1:V], sum(h[v, W[v]]) == 1)
+    else
+        @constraint(model, [v ∈ 1:V], sum(s[W[v]]) ≥ 1)
+    end
+end
+
+function add_capacity_constraints!(
+    g::MetaGraph,
+    m::Model,
+    capacity_constraints::CapacityConstraintsConfig
+)
+    V = nv(g)
+
+    # h[i, j] == 1 means that switch i is assigned to controller j.
+    @variable(m, h[1:V, 1:V], Bin)
+
+    arrivals = capacity_constraints.arrivals
+    controller_capacity = capacity_constraints.controller_capacity
+    cd = [arrivals[v] for v ∈ 1:V]
+    cc = [controller_capacity[v] for v ∈ 1:V]
+    for w ∈ 1:V
+        @constraint(m, cd ⋅ h[:, w] ≤ cc[w] * s[w])
+    end
+end
+
+function add_survivability_constraints!(
+    g::MetaGraph,
+    m::Model,
+    placement_config::PlacementConfig;
+    controller_constraints::Union{ControllerConstraints, Nothing}=nothing,
+)
+    attackset = placement_config.attacks
+    alen = length(attackset)
+    
+    # The number of surviving nodes given attack a 
+    @variable(m, Y[1:alen], Bin)
+
+    C_sets = Dict(
+        a => components(attack_graph(g, attack)) 
+        for (a, attack) ∈ enumerate(attackset)
+    )
+
+    # Component Survivability variable 
+    # S=1 if component survives
+    @variable(m, S[a = 1:alen, c = 1:length(C_sets[a])], Bin)
+
+    # The set of primary controller nodes 
+    s = m[:s]
+
+    # Component c survives if there is another controller in the 
+    # given component.
+    for a ∈ 1:alen 
+        for (c, comp) ∈ enumerate(C_sets[a])
+            vs = collect(labels(comp))
+            if isnothing(controller_constraints)
+                @constraint(m, S[a, c] .≤ sum(s[vs]))
+            else
+                # The set of backup controller nodes 
+                r = m[:r]
+
+                @constraint(m, S[a, c] .≤ sum(s[vs] + r[vs]))
+            end
+        end
+    end
+
+    # Count the number of surviving nodes.
+    @constraint(m,
+        [a ∈ 1:alen],
+        # length
+        Y[a] == sum([
+            let 
+                vs = collect(labels(cs))
+                length(vs) * S[a, c]
+            end
+            for (c, cs) ∈ enumerate(C_sets[a])
+        ])
+    )
 end
 
 ## Paper: Max-Min Optimization of Controller Placements
@@ -166,12 +313,12 @@ function cpop(
 
     # controllers must be within BCC distance of each other
     if !isnothing(BCC)
-        U = get_U(g, BCC, dists)
+        U = get_U(BCC, dists)
         @constraint(model, [(v, w) ∈ U], s[v] + s[w] ≤ 1)
     end
 
     if !isnothing(BSC)
-        W = get_Wv(g, BSC, dists)
+        W = get_Wv(BSC, dists)
         @constraint(model, [v ∈ 1:V], sum(s[W[v]]) ≥ 1)
     end
 
@@ -288,7 +435,7 @@ function maximum_sc_delay(
     @variable(m, s[1:V], Bin)
     
     # A1h: Controller assignments
-    Wv = get_Wv(g, BSC, dists; tol=tol)
+    Wv = get_Wv(BSC, dists; tol=tol)
     @variable(m, z[v in keys(Wv), w in Wv[v]], Bin)
 
     # A1a: Objective function
@@ -302,7 +449,7 @@ function maximum_sc_delay(
     end
 
     # A1c
-    U = get_U(g, BCC, dists; tol=tol)
+    U = get_U(BCC, dists; tol=tol)
     for (v, w) ∈ U 
         @constraint(m, s[v] + s[w] ≤ 1)
     end
@@ -339,119 +486,47 @@ end
 # For cost266 
 # - P* = 3, tight CCD BCC = 1500, P* = 5 BCC = 2000 
 function generate_controller_placement(
-    g :: MetaGraph,
-    P :: Union{Int, IntBound},
-    B :: Union{Int, IntBound};
-    C :: Union{Int, Nothing} = nothing,
+    g::MetaGraph,
+    placement_config::PlacementConfig;
+    controller_constraints::Union{ControllerConstraints, Nothing}=nothing,
+    delay_constraints::Union{DelayConstraintsConfig, Nothing}=nothing,
+    capacity_constraints::Union{CapacityConstraintsConfig, Nothing}=nothing,
     optim = DEFAULT_OPTIM,
-    BCC :: Float64 = 0.0,
-    BSC :: Float64 = 0.0,
-    control_capacity :: Dict{Int, Float64} = Dict{Int, Float64}(),
-    control_demand :: Dict{Int, Float64} = Dict{Int, Float64}(),
-    placement_list :: Vector{Placements} = Placement[],
-    placement_difference :: Int = 1,
-    dists :: Union{Matrix{Float64}, Nothing} = nothing,
-    history :: Vector{Placements} = Placements[]
+    time_limit :: Union{Nothing, Float64} = nothing,
 )
-    # Unfortunately, nvidia cuOpt does not support feasibility.
-    m = Model(optim)
+    m = Model(optim) 
     set_silent(m)
-    dists = isnothing(dists) ? get_distance_matrix(g) : dists
-    V = nv(g)
-    local x
-    has_capacity = false
 
-    if !isempty(control_capacity) || !isempty(control_demand)
-        @assert (!isempty(control_capacity) && !isempty(control_demand)) "Both control capacity and control demand should not be empty"
-        has_capacity = true
-    end
-    
-    #  # if P isa Tuple
-
-    P′, P″ = @unpack_bounds P 
-    B′, B″ = @unpack_bounds B
-
-    # Primary controller list
-    @variable(m, y[1:V], Bin)
-
-    # Backup controller list
-    @variable(m, x[1:V], Bin)
-    # Controller assignment list
-    @variable(m, z[1:V, 1:V], Bin)
-
-    if has_capacity
-        @variable(m, Z)
-        @objective(m, Min, Z)
-    else
-        @objective(m, FEASIBILITY_SENSE, 0)
-    end
-    
-    # (2b) Total number of primary and backup controllers should equal M
-    if !isnothing(C)
-        @constraint(m, sum(x) + sum(y) == C)
-    end 
-    # (2c) Primary controllers constraint 
-    @constraint(m, P′ ≤ sum(y) ≤ P″)
-
-    # (2d) Backup controllers constraint
-    @constraint(m, B′ ≤ sum(x) ≤ B″)
-
-    if BCC > 0.0
-        # println("(2e) activated")
-        U = get_U(g, BCC, dists)
-
-        # (2e) Controllers must be able to reach each other inside BCC delay.
-        for (v, w) ∈ U
-            @constraint(m, y[v] + y[w] ≤ 1)
-        end
+    if !isnothing(time_limit)
+        set_time_limit_sec(m, time_limit)
     end
 
-    if BSC > 0.0
-        # println("(2f) activated")
-        W = get_Wv(g, BSC, dists)
-        # @show W
-        # (2f) Must have one controller in the vicinity of SCD.
+        m = Model(optim) 
+    set_silent(m)
 
-        for (v, Wv) ∈ W
-            # @show Wv
-            @constraint(m, sum(y[Wv]) ≥ 1)
-        end
+    if !isnothing(time_limit)
+        set_time_limit_sec(m, time_limit)
     end
 
-    # (2g) Can only be a primary or backup. Not both
-    @constraint(m, y .+ x .≤ 1)
-
-    # (2h) Controller assignment 
-    for v ∈ 1:V
-        @constraint(m, sum(z[v, :]) == 1)
+    add_controllers!(g, m, placement_config; controller_constraints)
+    if !isnothing(delay_constraints)
+        add_delay_constraints!(g, m, delay_constraints; capacity_constraints)
     end
 
-    # (2i)
-    for v ∈ 1:V
-        @constraint(m, z[v, :] .≤ y)
+    if !isnothing(capacity_constraints)
+        add_capacity_constraints!(g, m, capacity_constraints)
     end
 
-    # (2j) Capacity constraint
-    if has_capacity
-        cd = [control_demand[v] for v ∈ 1:V]
-        cc = [control_capacity[v] for v ∈ 1:V]
-        for w ∈ 1:V
-            @constraint(m, cd ⋅ z[:, w] ≤ cc[w] * y[w] + Z)
-        end
-    end
-
-    # (2k) Uniqueness constraint
-    @uniqueness_constraints(m, V, history, UNIQUE_NODE, y, x)
+    @objective(m, FEASIBILITY_SENSE, 0)
 
     time_taken = @solve_problem!(m)
 
-    placement = Placements(to_indices(y), to_indices(x))
+    placement = Placements(to_indices(s), to_indices(r))
     
     (
         controllers = placement,
         time = time_taken,
         model = m,
-        # objective_value = Z,
     )
 end
 
@@ -505,113 +580,40 @@ function mixed_strategies_master(
 end
 
 function mixed_strategies_pricing_placement(
-    g :: MetaGraph,
-    P :: Union{Int, IntBound},
-    B :: Union{Int, IntBound},
-    attackset :: Vector{Attacks},
-    p :: Vector{Float64};
-    C :: Union{Int, Nothing} = nothing,
+    g::MetaGraph,
+    placement_config::PlacementConfig;
+    controller_constraints::Union{ControllerConstraints, Nothing}=nothing,
+    delay_constraints::Union{DelayConstraintsConfig, Nothing}=nothing,
+    capacity_constraints::Union{CapacityConstraintsConfig, Nothing}=nothing,
     optim = DEFAULT_OPTIM,
-    BCC :: Float64 = 0.0,
-    BSC :: Float64 = 0.0,
-    dists :: Union{Nothing, Matrix{Float64}} = nothing,
     time_limit :: Union{Nothing, Float64} = nothing,
-    control_capacity::Dict{Int,Float64}=Dict{Int,Float64}(),
-    control_demand::Dict{Int,Float64}=Dict{Int,Float64}(),
-    history :: Vector{Placements} = Placements[],
 )
-    P′, P″ = @unpack_bounds P
-    B′, B″ = @unpack_bounds B 
-
-    V = nv(g)
-    alen = length(attackset)
-
-    dists = isnothing(dists) ? get_distance_matrix(g) : dists
-
     m = Model(optim) 
+    p = placement_config.p
     set_silent(m)
 
     if !isnothing(time_limit)
         set_time_limit_sec(m, time_limit)
     end
 
-    @variables(m, begin
-        x[1:V], Bin # Backup controllers 
-        y[1:V], Bin # Primary controllers 
-        Y[1:alen]
-        z[1:V, 1:V], Bin
-    end)
+    add_controllers!(g, m, placement_config; controller_constraints)
+    if !isnothing(delay_constraints)
+        add_delay_constraints!(g, m, delay_constraints; capacity_constraints)
+    end
 
-    # Component survivability
-    C_sets = Dict(
-        a => components(attack_graph(g, attack)) 
-        for (a, attack) ∈ enumerate(attackset)
-    )
+    if !isnothing(capacity_constraints)
+        add_capacity_constraints!(g, m, capacity_constraints)
+    end
 
-    # S=1 if component survives
-    # @variable(m, S[1:alen, 1:length(C_sets)], Bin)
-    @variable(m, S[a = 1:alen, c = 1:length(C_sets[a])], Bin)
+    add_survivability_constraints!(g, m, placement_config; controller_constraints)
 
+    Y = m[:Y]
+    # Maximize the number of surviving controllers (weighted by probability)
     @objective(m, Max, p ⋅ Y)
-
-    # Maximum number of controllers 
-    if !isnothing(C)
-        @constraint(m, sum(x) + sum(y) == C)
-    end
-
-    # Primary and backup controller bounding 
-    @constraints(m, begin
-        P′ ≤ sum(y) ≤ P″
-        B′ ≤ sum(x) ≤ B″
-    end)
-
-    # controllers must be within BCC distance of each other
-    if BCC > 0.0 
-        U = get_U(g, BCC, dists)
-        @constraint(m, [(v, w) ∈ U], y[v] + y[w] ≤ 1)
-    end
-
-    if BSC > 0.0 
-        W = get_Wv(g, BSC, dists)
-        @constraint(m, [v ∈ 1:V], sum(y[W[v]]) ≥ 1)
-    end
-
-    # controllers can only be one type.
-    @constraint(m, y .+ x .≤ 1)
-    # Switch-to-controller load capacity constraints
-    if !isempty(control_capacity) && !isempty(control_demand)
-        @constraint(m, [w ∈ 1:V], sum(control_demand[v] * z[v, w] for v ∈ 1:V) ≤ control_capacity[w] * y[w])
-        @constraint(m, [v ∈ 1:V], z[v, v] == y[v])
-    end
-    
-    # @constraint(m, [a in 1:alen], 
-    # println(C_sets)
-    for a ∈ 1:alen
-        for (c, comp) ∈ enumerate(C_sets[a])
-            vs = collect(labels(comp))
-            @constraint(m, S[a, c] .≤ sum(x[vs] + y[vs]))
-        end
-    end
-
-    @constraint(m,
-        [a ∈ 1:alen],
-        # length
-        Y[a] == sum([
-            let 
-                vs = collect(labels(cs))
-                length(vs) * S[a, c]
-            end
-            for (c, cs) ∈ enumerate(C_sets[a])
-        ])
-    )
-
-    # @uniqueness_constraints(m, V, history, UNIQUE_NODE, y, x)
 
     time_taken = @solve_problem!(m)
 
-    placements = B″ > 0 ? 
-        Placements(to_indices(y), to_indices(x)) : 
-        Placements(to_indices(y))
+    placements = get_controller_placements(m; with_backups=!isnothing(controller_constraints))
 
     (
         time = time_taken,
@@ -627,11 +629,10 @@ function mixed_strategies_pricing_attack(
     placementset :: Vector{Placements},
     q :: Vector{Float64};
     optim = DEFAULT_OPTIM,
-    R :: Float64 = 0.0,
+    R :: Union{Float64, Nothing} = nothing,
     attack_cost :: Dict{Int, Float64} = Dict{Int, Float64}(),
     tol :: Float64 = 1e-9,
     time_limit :: Union{Float64} = nothing,
-    history :: Vector{Attacks} = Attacks[],
 )
     m = Model(optim)
     set_silent(m)
@@ -660,7 +661,7 @@ function mixed_strategies_pricing_attack(
     @constraint(m, K′ ≤ sum(a) ≤ K″)
 
     # Attacker budget constraint
-    if R > 0.0 && !isempty(attack_cost)
+    if !isnothing(R) && !isempty(attack_cost)
         @constraint(m, sum(attack_cost[v] * a[v] for v ∈ 1:V) ≤ R)
     end
 

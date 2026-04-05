@@ -129,13 +129,13 @@ function mixed_strategies_colgen(
     P::Union{Int,IntBound},
     B::Union{Int,IntBound},
     K::Union{Int,IntBound};
-    C::Union{Nothing,Int}=nothing,
+    M::Union{Nothing,Int}=nothing,
     optim=DEFAULT_OPTIM,
-    BCC::Float64=0.0,
-    BSC::Float64=0.0,
+    BCC::Union{Float64, Nothing}=nothing,
+    BSC::Union{Float64, Nothing}=nothing,
     control_capacity::Dict{Int,Float64}=Dict{Int,Float64}(),
     control_demand::Dict{Int,Float64}=Dict{Int,Float64}(),
-    R::Float64=0.0,
+    R::Union{Float64, Nothing}=nothing,
     attack_cost::Dict{Int,Float64}=Dict{Int,Float64}(),
     placement_list::Vector{Placements}=Placements[],
     placement_difference::Int=1,
@@ -148,7 +148,7 @@ function mixed_strategies_colgen(
     # Step 0 
     # Initialize list of placements and list of attacks
     res = generate_controller_placement(
-        g, P, B; C, optim, BCC, BSC, control_capacity,
+        g, P, B; M, optim, BCC, BSC, control_capacity,
         control_demand, placement_list, placement_difference,
         dists
     )
@@ -177,14 +177,13 @@ function mixed_strategies_colgen(
         # Solve the placement gen problem to get placement s′
         p_res = mixed_strategies_pricing_placement(
             g, P, B, attackset, p_star;
-            optim, C, BCC, BSC, dists,
+            optim, M, BCC, BSC, dists,
             control_capacity, control_demand,
             time_limit, history=placementset,
         )
 
         time_limit -= p_res.time
 
-        # @assert p_res != :infeasible "Pricing Placement is infeasible"
         s′ = p_res.s
 
         push!(placement_times, p_res.time)
