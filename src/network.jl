@@ -1,14 +1,14 @@
 struct SDNNode
-    str_label :: String
-    id :: Int
-    loc_x :: Float64
-    loc_y :: Float64
+    str_label::String
+    id::Int
+    loc_x::Float64
+    loc_y::Float64
 end
 
 struct SDNEdge
-    link_a :: Int
-    link_b :: Int
-    length :: Float64
+    link_a::Int
+    link_b::Int
+    length::Float64
 end
 
 load_dognet() = load_network("networks/dognet.dat")
@@ -25,14 +25,14 @@ function labels_to_codes(g::MetaGraph, node_labels)
     [code_for(g, l) for l in node_labels]
 end
 
-function load_network(filename :: AbstractString)
+function load_network(filename::AbstractString)
     contents = split(String(read(filename)), "\n")
     is_parsing_nodes = false
 
     mg = MetaGraph(
         SimpleWeightedGraph();
         label_type = Int,
-        vertex_data_type = Tuple{Float64, Float64, String},
+        vertex_data_type = Tuple{Float64,Float64,String},
         edge_data_type = Float64,
         weight_function = identity,
         default_weight = Inf,
@@ -40,7 +40,7 @@ function load_network(filename :: AbstractString)
 
     nodes = SDNNode[]
     edges = SDNEdge[]
-    
+
     for line in contents
         if startswith(line, "param: sa_Nodes")
             # We are still parsing nodes
@@ -75,7 +75,7 @@ function load_network(filename :: AbstractString)
     for n in nodes
         mg[n.id] = (n.loc_x, n.loc_y, n.str_label)
     end
-    
+
     for e in edges
         # @printf("%d -> %d => %f\n", e.link_a, e.link_b, e.length)
         mg[e.link_a, e.link_b] = e.length
@@ -99,7 +99,7 @@ end
 
 function plot_network(g::MetaGraph; title = nothing)
     locs = [g[label_for(g, v)] for v in vertices(g)]
-    
+
     x_coords = [loc[1] for loc in locs]
     y_coords = [loc[2] for loc in locs]
     node_labels = [loc[3] for loc in locs]
@@ -116,7 +116,7 @@ function plot_network(g::MetaGraph; title = nothing)
         linecolor = :gray,
         markercolor = :white,
         title = title,
-        aspect_ratio = :equal
+        aspect_ratio = :equal,
     )
 end
 
@@ -129,16 +129,16 @@ end
 function distance_matrix(g::MetaGraph)
     n = nv(g)
     dist_matrix = fill(Inf, n, n)
-    
-    for i in 1:n
+
+    for i = 1:n
         ds = dijkstra_shortest_paths(g, i)
         dist_matrix[i, :] = ds.dists
     end
-    
+
     return dist_matrix
 end
 
-function incident_edges(g :: MetaGraph, v :: Int)
+function incident_edges(g::MetaGraph, v::Int)
     v_idx = code_for(g, v)
     [e for e in edges(g) if e.src == v_idx || e.dst == v_idx]
 end
@@ -147,7 +147,7 @@ function get_distance_matrix(g::AbstractGraph)
     V = nv(g)
     dists = fill(Inf, V, V)
 
-    for i in 1:V
+    for i = 1:V
         algo_result = dijkstra_shortest_paths(g, i)
         dists[i, :] = algo_result.dists
     end
@@ -155,30 +155,34 @@ function get_distance_matrix(g::AbstractGraph)
     return dists
 end
 
-function surviving_nodes(g :: AbstractGraph, s :: Vector{Int}, a :: Attacks)
+function surviving_nodes(g::AbstractGraph, s::Vector{Int}, a::Attacks)
     # Return the surviving nodes (not components) given an attack 
     ag = attack_graph(g, a)
 
-    Iterators.flatten(
-        [collect(labels(c)) for c in components(ag) 
-        if !isdisjoint([code_for(g, l) for l in labels(c)], s)]
-    ) |> collect |> sort
+    Iterators.flatten([
+        collect(labels(c)) for
+        c in components(ag) if !isdisjoint([code_for(g, l) for l in labels(c)], s)
+    ]) |>
+    collect |>
+    sort
 end
 
 function surviving_nodes(
-    g :: AbstractGraph,
-    ps :: Vector{Int}, # Primary controllers 
-    bs :: Vector{Int}, # Backup controllers 
-    a :: Attacks, # attacks
+    g::AbstractGraph,
+    ps::Vector{Int}, # Primary controllers 
+    bs::Vector{Int}, # Backup controllers 
+    a::Attacks, # attacks
 )
     ag = attack_graph(g, a)
 
     # Join the two controllers!
     cs = union(ps, bs)
-    Iterators.flatten(
-        [collect(labels(c)) for c in components(ag) 
-        if !isdisjoint([code_for(g, l) for l in labels(c)], cs)]
-    ) |> collect |> sort
+    Iterators.flatten([
+        collect(labels(c)) for
+        c in components(ag) if !isdisjoint([code_for(g, l) for l in labels(c)], cs)
+    ]) |>
+    collect |>
+    sort
 end
 
 function strings_to_indices(g::MetaGraph, str_labels::Vector{String})
@@ -186,18 +190,18 @@ function strings_to_indices(g::MetaGraph, str_labels::Vector{String})
     return [str_to_idx[s] for s in str_labels if haskey(str_to_idx, s)]
 end
 
-function surviving_nodes(g :: AbstractGraph, ps :: Placements, a :: Attacks)
+function surviving_nodes(g::AbstractGraph, ps::Placements, a::Attacks)
     surviving_nodes(g, ps.pc, ps.bc, a)
 end
 
-function shortest_path_tree(g::MetaGraph, root :: Int)
+function shortest_path_tree(g::MetaGraph, root::Int)
     root_idx = code_for(g, root)
     ds = dijkstra_shortest_paths(g, root_idx)
 
     tree = MetaGraph(
         SimpleWeightedGraph();
-        label_type = Int, 
-        vertex_data_type = Tuple{Float64, Float64, String},
+        label_type = Int,
+        vertex_data_type = Tuple{Float64,Float64,String},
         edge_data_type = Float64,
         weight_function = identity,
         default_weight = Int,
@@ -226,32 +230,32 @@ end
 
 # Attack costs is based on betweenness centrality
 function calculate_attack_costs(g::MetaGraph)
-    costs = Dict{Int, Float64}()
+    costs = Dict{Int,Float64}()
     # Calculate the betweenness centrality for all vertices
-    bc = betweenness_centrality(g) 
-    
-    for v in 1:nv(g)
+    bc = betweenness_centrality(g)
+
+    for v = 1:nv(g)
         costs[v] = Float64(bc[v])
     end
     return costs
 end
 
 # Attacker budget is the ratio of all attack costs 
-function calculate_attacker_budget(costs::Dict{Int, Float64}, α::Float64)
+function calculate_attacker_budget(costs::Dict{Int,Float64}, α::Float64)
     return α * sum(values(costs))
 end
 
 # Number of arrivals per graph
 function calculate_arrivals(g::MetaGraph; multiplier::Float64 = 10.0)
-    λ = Dict{Int, Float64}()
-    for v in 1:nv(g)
+    λ = Dict{Int,Float64}()
+    for v = 1:nv(g)
         λ[v] = multiplier * degree(g, v)
     end
     return λ
 end
 
 # The value of the capacity for all controllers
-function calculate_uniform_capacity(λ::Dict{Int, Float64}, P_prime::Int; κ=1.0)
+function calculate_uniform_capacity(λ::Dict{Int,Float64}, P_prime::Int; κ = 1.0)
     Λ = sum(values(λ))
     return κ * Λ / P_prime
 end
@@ -259,8 +263,8 @@ end
 # Dictionary mapping for the controller capacity (uniform
 # capacity using `calculate_uniform_capacity`)
 function calculate_capacity_dict(g::MetaGraph, capacity_value::Float64)
-    C_dict = Dict{Int, Float64}()
-    for v in 1:nv(g)
+    C_dict = Dict{Int,Float64}()
+    for v = 1:nv(g)
         C_dict[v] = capacity_value
     end
     return C_dict

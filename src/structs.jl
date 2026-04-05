@@ -1,9 +1,9 @@
 struct Placements
-    pc :: Vector{Int}
-    bc :: Vector{Int}
+    pc::Vector{Int}
+    bc::Vector{Int}
 
-    Placements(pc :: Vector{Int}, bc :: Vector{Int}) = new(pc, bc)
-    Placements(pc :: Vector{Int}) = new(pc, Int[])
+    Placements(pc::Vector{Int}, bc::Vector{Int}) = new(pc, bc)
+    Placements(pc::Vector{Int}) = new(pc, Int[])
 end
 
 function ==(a::Placements, b::Placements)
@@ -14,7 +14,7 @@ function hash(a::Placements, h::UInt)
     return hash(a.pc, hash(a.bc, h))
 end
 
-const IntBound = Tuple{Int, Int}
+const IntBound = Tuple{Int,Int}
 const Attacks = Vector{Int}
 
 # # Base Config for the placement problem for mixed-strategies 
@@ -30,7 +30,7 @@ end
 # Base config for the attack problem for mixed-strategies.
 @kwdef struct AttackConfig
     # Total Number of attacks 
-    K::Union{Int, IntBound}
+    K::Union{Int,IntBound}
     # Current set of placements so far.
     placements::Vector{Placements}
 end
@@ -43,7 +43,7 @@ end
     P″::Int
     B′::Int
     B″::Int
-    
+
     @assert P′ ≤ P″ "Primary controller lower bound should be less than or equal to the upper bound"
     @assert B′ ≤ B″ "Backup controller lower bound should be less tha or equal to the upper bound"
 end
@@ -59,8 +59,8 @@ end
 
 @with_kw struct CapacityConstraintsConfig
     # Controller Capacity Mapping
-    controller_capacity::Dict{Int, Float64}
-    arrivals::Dict{Int, Float64}
+    controller_capacity::Dict{Int,Float64}
+    arrivals::Dict{Int,Float64}
 
     @assert !isempty(controller_capacity) && !isempty(arrivals)
 end

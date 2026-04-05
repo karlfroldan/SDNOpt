@@ -10,9 +10,9 @@ function Base.show(io::IO, p::Placements)
     end
 end
 
-function safe_probs(p :: AbstractArray; tol::Float64=1e-10)
+function safe_probs(p::AbstractArray; tol::Float64 = 1e-10)
     v = abs.(collect(p))
-    v[v .< tol] .= 0.0
+    v[v.<tol] .= 0.0
 
     # Normalize
     total_mass = sum(v)
@@ -35,6 +35,6 @@ function to_indices(controller_variable)
     findall(Int.(round.(value.(controller_variable))) .== 1)
 end
 
-function all_controllers(p :: Placements) 
+function all_controllers(p::Placements)
     union(p.pc, p.bc)
 end

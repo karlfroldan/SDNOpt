@@ -1,33 +1,36 @@
-const UNIQUE_NODE :: Int = 1
+const UNIQUE_NODE::Int = 1
 
 # Attacks
 function add_uniqueness_constraint!(
-    m::Model, 
-    V::Int, 
-    history::Vector{Attacks}, 
-    diff::Int, 
-    v1::AbstractArray{VariableRef}
+    m::Model,
+    V::Int,
+    history::Vector{Attacks},
+    diff::Int,
+    v1::AbstractArray{VariableRef},
 )
     for T_nodes in history
         not_T = setdiff(1:V, T_nodes)
-        @constraint(m, 
-            sum(v1[v] for v in T_nodes) - sum(v1[v] for v in not_T) ≤ length(T_nodes) - diff
+        @constraint(
+            m,
+            sum(v1[v] for v in T_nodes) - sum(v1[v] for v in not_T) ≤
+            length(T_nodes) - diff
         )
     end
 end
 
 # Placements with one variable 
 function add_uniqueness_constraint!(
-    m::Model, 
-    V::Int, 
-    history::Vector{Placements}, 
-    diff::Int, 
-    vp::AbstractArray{VariableRef}
+    m::Model,
+    V::Int,
+    history::Vector{Placements},
+    diff::Int,
+    vp::AbstractArray{VariableRef},
 )
     for sol in history
         Tp = sol.pc
         not_Tp = setdiff(1:V, Tp)
-        @constraint(m, 
+        @constraint(
+            m,
             sum(vp[v] for v in Tp) - sum(vp[v] for v in not_Tp) ≤ length(Tp) - diff
         )
     end
@@ -35,27 +38,28 @@ end
 
 # Placements with primary and backup controllers
 function add_uniqueness_constraint!(
-    m::Model, 
-    V::Int, 
-    history::Vector{Placements}, 
-    diff::Int, 
-    vp::AbstractArray{VariableRef}, 
-    vb::AbstractArray{VariableRef}
+    m::Model,
+    V::Int,
+    history::Vector{Placements},
+    diff::Int,
+    vp::AbstractArray{VariableRef},
+    vb::AbstractArray{VariableRef},
 )
     for sol in history
         Tp = sol.pc
         Tb = sol.bc
         not_Tp = setdiff(1:V, Tp)
         not_Tb = setdiff(1:V, Tb)
-        
-        @constraint(m, 
-            sum(vp[v] for v in Tp) - sum(vp[v] for v in not_Tp) +
-            sum(vb[v] for v in Tb) - sum(vb[v] for v in not_Tb) ≤ length(Tp) + length(Tb) - diff
+
+        @constraint(
+            m,
+            sum(vp[v] for v in Tp) - sum(vp[v] for v in not_Tp) + sum(vb[v] for v in Tb) -
+            sum(vb[v] for v in not_Tb) ≤ length(Tp) + length(Tb) - diff
         )
     end
 end
 
-function get_controller_placements(model::Model; with_backups=False)
+function get_controller_placements(model::Model; with_backups = False)
     assert_is_solved_and_feasible(model)
     s = model[:s]
     if with_backups
@@ -69,38 +73,30 @@ end
 macro uniqueness_constraints(m, V, history, diff, vars...)
     return quote
         add_uniqueness_constraint!(
-            $(esc(m)), 
-            $(esc(V)), 
-            $(esc(history)), 
-            $(esc(diff)), 
-            $(map(esc, vars)...)
+            $(esc(m)),
+            $(esc(V)),
+            $(esc(history)),
+            $(esc(diff)),
+            $(map(esc, vars)...),
         )
     end
 end
 
 
-function get_U(
-    BCC :: Float64,
-    dists :: Matrix{Float64};
-    tol = 1e-9
-)
+function get_U(BCC::Float64, dists::Matrix{Float64}; tol = 1e-9)
     V, _ = size(dists)
     [
-        (v, w) for (v, w) in Base.Iterators.product(1:V, 1:V)
-        if v ≤ w && dists[v, w] > BCC - tol
+        (v, w) for
+        (v, w) in Base.Iterators.product(1:V, 1:V) if v ≤ w && dists[v, w] > BCC - tol
     ]
 end
 
-function get_Wv(
-    BSC :: Float64,
-    dists :: Matrix{Float64};
-    tol = 1e-9
-)
+function get_Wv(BSC::Float64, dists::Matrix{Float64}; tol = 1e-9)
     V, _ = size(dists)
-    W = Dict{Int, Vector{Int}}()
+    W = Dict{Int,Vector{Int}}()
 
-    for v in 1:V
-        vicinity = [w for w in 1:V if dists[v, w] ≤ BSC + tol] # && v ≤ w]
+    for v = 1:V
+        vicinity = [w for w = 1:V if dists[v, w] ≤ BSC + tol] # && v ≤ w]
         if !isempty(vicinity)
             W[v] = vicinity
         end
@@ -113,7 +109,7 @@ function add_controllers!(
     g::MetaGraph,
     m::Model,
     placement_config::PlacementConfig;
-    controller_constraints::Union{ControllerConstraints, Nothing}=nothing,
+    controller_constraints::Union{ControllerConstraints,Nothing} = nothing,
 )
     V = nv(g)
     M = placement_config.M
@@ -151,7 +147,7 @@ function add_delay_constraints!(
     g::MetaGraph,
     m::Model,
     delay_constraints::DelayConstraintsConfig;
-    capacity_constraints::Union{CapacityConstraintsConfig, Nothing}=nothing,
+    capacity_constraints::Union{CapacityConstraintsConfig,Nothing} = nothing,
 )
     dists = delay_constraints.distance_matrix
     BCC = delay_constraints.BCC
@@ -177,7 +173,7 @@ end
 function add_capacity_constraints!(
     g::MetaGraph,
     m::Model,
-    capacity_constraints::CapacityConstraintsConfig
+    capacity_constraints::CapacityConstraintsConfig,
 )
     V = nv(g)
 
@@ -186,9 +182,9 @@ function add_capacity_constraints!(
 
     arrivals = capacity_constraints.arrivals
     controller_capacity = capacity_constraints.controller_capacity
-    cd = [arrivals[v] for v in 1:V]
-    cc = [controller_capacity[v] for v in 1:V]
-    for w in 1:V
+    cd = [arrivals[v] for v = 1:V]
+    cc = [controller_capacity[v] for v = 1:V]
+    for w = 1:V
         @constraint(m, cd ⋅ h[:, w] ≤ cc[w] * s[w])
     end
 end
@@ -197,17 +193,16 @@ function add_survivability_constraints!(
     g::MetaGraph,
     m::Model,
     placement_config::PlacementConfig;
-    controller_constraints::Union{ControllerConstraints, Nothing}=nothing,
+    controller_constraints::Union{ControllerConstraints,Nothing} = nothing,
 )
     attackset = placement_config.attacks
     alen = length(attackset)
-    
+
     # The number of surviving nodes given attack a 
     @variable(m, Y[1:alen], Bin)
 
     C_sets = Dict(
-        a => components(attack_graph(g, attack)) 
-        for (a, attack) in enumerate(attackset)
+        a => components(attack_graph(g, attack)) for (a, attack) in enumerate(attackset)
     )
 
     # Component Survivability variable 
@@ -219,7 +214,7 @@ function add_survivability_constraints!(
 
     # Component c survives if there is another controller in the 
     # given component.
-    for a in 1:alen 
+    for a = 1:alen
         for (c, comp) in enumerate(C_sets[a])
             vs = collect(labels(comp))
             if isnothing(controller_constraints)
@@ -234,15 +229,15 @@ function add_survivability_constraints!(
     end
 
     # Count the number of surviving nodes.
-    @constraint(m,
+    @constraint(
+        m,
         [a in 1:alen],
         # length
         Y[a] == sum([
-            let 
+            let
                 vs = collect(labels(cs))
                 length(vs) * S[a, c]
-            end
-            for (c, cs) in enumerate(C_sets[a])
+            end for (c, cs) in enumerate(C_sets[a])
         ])
     )
 end
@@ -252,13 +247,13 @@ end
 
 # Formulation 3.1: Max-min Controller Placement optimization problem (CPOP)
 function cpop(
-    g :: MetaGraph, 
-    M :: Int, 
+    g::MetaGraph,
+    M::Int,
     # The nodes that we want to attack.
-    attacks :: Vector{Vector{Int}};
-    dists :: Union{Nothing, Matrix{Float64}} = nothing,
-    BCC :: Union{Nothing, Float64}=nothing,
-    BSC :: Union{Nothing, Float64}=nothing,
+    attacks::Vector{Vector{Int}};
+    dists::Union{Nothing,Matrix{Float64}} = nothing,
+    BCC::Union{Nothing,Float64} = nothing,
+    BSC::Union{Nothing,Float64} = nothing,
     optim = DEFAULT_OPTIM,
 )
     # Find an M-node controller placement given the considered set of attacks
@@ -285,12 +280,12 @@ function cpop(
     @constraint(model, sum(s) == M)
 
     # 3c - all attacked nodes are zeroed out
-    for a in 1:alen
+    for a = 1:alen
         @constraint(model, y[attacks[a], a] .== 0)
     end
 
     # 3d - All nodes in components without controllers are zeroed out
-    for a in 1:alen
+    for a = 1:alen
         ag = attack_graph(g, attacks[a])
         cs = components(ag)
 
@@ -302,10 +297,7 @@ function cpop(
             V_c = length(comp_labels)
 
             comp_codes = labels_to_codes(g, comp_labels)
-            @constraint(
-                model,
-                sum(y[comp_codes, a]) ≤ V_c * sum(s[comp_codes])
-            )
+            @constraint(model, sum(y[comp_codes, a]) ≤ V_c * sum(s[comp_codes]))
         end
         # 3e - Bounding objective value
         @constraint(model, Y ≤ sum(y[:, a]))
@@ -328,17 +320,12 @@ function cpop(
         controllers = to_indices(s),
         objective_value = objective_value(model),
         model = model,
-        time = time_taken
+        time = time_taken,
     )
 end
 
 # Formulation 3.2: Min-Max Node Attack Optimization Problem (NAOP)
-function naop(
-    g :: MetaGraph, 
-    K :: Int, 
-    placements :: Vector{Vector{Int}};
-    optim = DEFAULT_OPTIM,
-)
+function naop(g::MetaGraph, K::Int, placements::Vector{Vector{Int}}; optim = DEFAULT_OPTIM)
     model = Model(optim)
     set_silent(model)
 
@@ -357,9 +344,9 @@ function naop(
     @constraint(model, sum(a) == K)
 
     # 5c - Link is down after attack a
-    for v in 1:V
+    for v = 1:V
         for (e, edge) in enumerate(edges(g))
-            if edge.src == v || edge.dst == v 
+            if edge.src == v || edge.dst == v
                 @constraint(model, t[e] ≥ a[v])
             end
         end
@@ -372,7 +359,7 @@ function naop(
     end
 
     # 5e - Node v does not survive attack a if node v is attacked directly
-    for s in 1:S 
+    for s = 1:S
         @constraint(model, z[:, s] .≤ 1 .- a)
     end
 
@@ -386,7 +373,7 @@ function naop(
     # 5g and 5h - Make sure that if link e is available after attack a, then
     #             its end nodes either simultaneaously suvive or both are out
     #             of service.
-    for s in 1:S
+    for s = 1:S
         for (e, edge) in enumerate(edges(g))
             α, β = edge.src, edge.dst
             @constraint(model, z[α, s] ≥ z[β, s] - t[e])
@@ -395,28 +382,28 @@ function naop(
     end
 
     # 5i 
-    for s in 1:S 
+    for s = 1:S
         @constraint(model, Z ≥ sum(z[:, s]))
     end
 
     time_taken = @solve_problem!(model)
-    
+
     (
         attack = to_indices(a),
         objective_value = objective_value(model),
         model = model,
-        time = time_taken
+        time = time_taken,
     )
 end
 
 function maximum_sc_delay(
-    g :: MetaGraph,
-    P :: Union{Int, IntBound},
-    dists :: Matrix{Float64},
-    BSC :: Float64, 
-    BCC :: Float64;
+    g::MetaGraph,
+    P::Union{Int,IntBound},
+    dists::Matrix{Float64},
+    BSC::Float64,
+    BCC::Float64;
     tol = 1e-9,
-    optim=DEFAULT_OPTIM,
+    optim = DEFAULT_OPTIM,
 )
     V = nv(g)
 
@@ -430,12 +417,12 @@ function maximum_sc_delay(
 
     # A1i
     @variable(m, D)
-    
+
     # A1h: Controller placements
     @variable(m, s[1:V], Bin)
-    
+
     # A1h: Controller assignments
-    Wv = get_Wv(BSC, dists; tol=tol)
+    Wv = get_Wv(BSC, dists; tol = tol)
     @variable(m, z[v in keys(Wv), w in Wv[v]], Bin)
 
     # A1a: Objective function
@@ -449,8 +436,8 @@ function maximum_sc_delay(
     end
 
     # A1c
-    U = get_U(BCC, dists; tol=tol)
-    for (v, w) in U 
+    U = get_U(BCC, dists; tol = tol)
+    for (v, w) in U
         @constraint(m, s[v] + s[w] ≤ 1)
     end
 
@@ -467,7 +454,7 @@ function maximum_sc_delay(
     @constraint(m, [v in keys(Wv)], D ≥ sum(dists[v, w] * z[v, w] for w in Wv[v]))
 
     @solve_problem!(m)
-    
+
     return objective_value(m)
 end
 
@@ -488,20 +475,20 @@ end
 function generate_controller_placement(
     g::MetaGraph,
     placement_config::PlacementConfig;
-    controller_constraints::Union{ControllerConstraints, Nothing}=nothing,
-    delay_constraints::Union{DelayConstraintsConfig, Nothing}=nothing,
-    capacity_constraints::Union{CapacityConstraintsConfig, Nothing}=nothing,
+    controller_constraints::Union{ControllerConstraints,Nothing} = nothing,
+    delay_constraints::Union{DelayConstraintsConfig,Nothing} = nothing,
+    capacity_constraints::Union{CapacityConstraintsConfig,Nothing} = nothing,
     optim = DEFAULT_OPTIM,
-    time_limit :: Union{Nothing, Float64} = nothing,
+    time_limit::Union{Nothing,Float64} = nothing,
 )
-    m = Model(optim) 
+    m = Model(optim)
     set_silent(m)
 
     if !isnothing(time_limit)
         set_time_limit_sec(m, time_limit)
     end
 
-        m = Model(optim) 
+    m = Model(optim)
     set_silent(m)
 
     if !isnothing(time_limit)
@@ -522,12 +509,8 @@ function generate_controller_placement(
     time_taken = @solve_problem!(m)
 
     placement = Placements(to_indices(s), to_indices(r))
-    
-    (
-        controllers = placement,
-        time = time_taken,
-        model = m,
-    )
+
+    (controllers = placement, time = time_taken, model = m)
 end
 
 
@@ -538,9 +521,9 @@ end
 
 ## Master Problem 
 function mixed_strategies_master(
-    g :: MetaGraph,
-    placementset :: Vector{Placements},
-    attackset :: Vector{Attacks};
+    g::MetaGraph,
+    placementset::Vector{Placements},
+    attackset::Vector{Attacks};
     optim = DEFAULT_OPTIM,
 )
     m = Model(optim)
@@ -553,42 +536,42 @@ function mixed_strategies_master(
     @variable(m, y)
 
     @objective(m, Max, y)
-    
+
     # (22b) the probability should equal 1.
     @constraint(m, sum(q) == 1.0)
 
     # (22c)
     V_mat = zeros(Int, asize, psize)
-    for i in 1:asize
-        for j in 1:psize
+    for i = 1:asize
+        for j = 1:psize
             V_mat[i, j] = length(surviving_nodes(g, placementset[j], attackset[i]))
         end
     end
 
-    @constraint(m, con[i=1:asize], y ≤ sum(V_mat[i, j] * q[j] for j in 1:psize))
+    @constraint(m, con[i = 1:asize], y ≤ sum(V_mat[i, j] * q[j] for j = 1:psize))
     time_taken = @solve_problem!(m)
 
-    raw_duals = [dual(con[i]) for i in 1:asize]
+    raw_duals = [dual(con[i]) for i = 1:asize]
 
     (
         time = time_taken,
         model = m,
         objective = objective_value(m),
         q_star = safe_probs(value.(q)),
-        p_star = safe_probs(abs.(raw_duals)), 
+        p_star = safe_probs(abs.(raw_duals)),
     )
 end
 
 function mixed_strategies_pricing_placement(
     g::MetaGraph,
     placement_config::PlacementConfig;
-    controller_constraints::Union{ControllerConstraints, Nothing}=nothing,
-    delay_constraints::Union{DelayConstraintsConfig, Nothing}=nothing,
-    capacity_constraints::Union{CapacityConstraintsConfig, Nothing}=nothing,
+    controller_constraints::Union{ControllerConstraints,Nothing} = nothing,
+    delay_constraints::Union{DelayConstraintsConfig,Nothing} = nothing,
+    capacity_constraints::Union{CapacityConstraintsConfig,Nothing} = nothing,
     optim = DEFAULT_OPTIM,
-    time_limit :: Union{Nothing, Float64} = nothing,
+    time_limit::Union{Nothing,Float64} = nothing,
 )
-    m = Model(optim) 
+    m = Model(optim)
     p = placement_config.p
     set_silent(m)
 
@@ -613,26 +596,22 @@ function mixed_strategies_pricing_placement(
 
     time_taken = @solve_problem!(m)
 
-    placements = get_controller_placements(m; with_backups=!isnothing(controller_constraints))
+    placements =
+        get_controller_placements(m; with_backups = !isnothing(controller_constraints))
 
-    (
-        time = time_taken,
-        objective = objective_value(m),
-        model = m,
-        s = placements,
-    )
+    (time = time_taken, objective = objective_value(m), model = m, s = placements)
 end
 
 function mixed_strategies_pricing_attack(
-    g :: MetaGraph,
-    K :: Union{Int, IntBound},
-    placementset :: Vector{Placements},
-    q :: Vector{Float64};
+    g::MetaGraph,
+    K::Union{Int,IntBound},
+    placementset::Vector{Placements},
+    q::Vector{Float64};
     optim = DEFAULT_OPTIM,
-    R :: Union{Float64, Nothing} = nothing,
-    attack_cost :: Dict{Int, Float64} = Dict{Int, Float64}(),
-    tol :: Float64 = 1e-9,
-    time_limit :: Union{Float64} = nothing,
+    R::Union{Float64,Nothing} = nothing,
+    attack_cost::Dict{Int,Float64} = Dict{Int,Float64}(),
+    tol::Float64 = 1e-9,
+    time_limit::Union{Float64} = nothing,
 )
     m = Model(optim)
     set_silent(m)
@@ -662,21 +641,22 @@ function mixed_strategies_pricing_attack(
 
     # Attacker budget constraint
     if !isnothing(R) && !isempty(attack_cost)
-        @constraint(m, sum(attack_cost[v] * a[v] for v in 1:V) ≤ R)
+        @constraint(m, sum(attack_cost[v] * a[v] for v = 1:V) ≤ R)
     end
 
     # (25c)
-    @constraint(m, [(s, ps) in enumerate(S′)], 
-        z[all_controllers(ps), s] .== 1 .- a[all_controllers(ps)])
+    @constraint(
+        m,
+        [(s, ps) in enumerate(S′)],
+        z[all_controllers(ps), s] .== 1 .- a[all_controllers(ps)]
+    )
 
     # (25d)
     for edge in edges(g)
         α, β = edge.src, edge.dst
-        @constraint(m, [s in eachindex(S′)], 
-            z[β, s] .≥ z[α, s] .- a[β])
+        @constraint(m, [s in eachindex(S′)], z[β, s] .≥ z[α, s] .- a[β])
 
-        @constraint(m, [s in eachindex(S′)],
-            z[α, s] .≥ z[β, s] .- a[α])
+        @constraint(m, [s in eachindex(S′)], z[α, s] .≥ z[β, s] .- a[α])
     end
 
     # (25f)
@@ -686,10 +666,5 @@ function mixed_strategies_pricing_attack(
 
     time_taken = @solve_problem!(m)
 
-    (
-        time = time_taken,
-        objective = objective_value(m),
-        model = m,
-        a = to_indices(a),
-    )
+    (time = time_taken, objective = objective_value(m), model = m, a = to_indices(a))
 end

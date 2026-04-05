@@ -3,34 +3,34 @@ function get_active_nodes(g::MetaGraph, controllers::Vector{Int}, attacks::Vecto
     attack_set = Set(attacks)
     controller_set = Set(controllers)
     active_nodes = Set{Int}()
-    
+
     surviving_vertices = [v for v in vertices(g) if !(v in attack_set)]
     sub_g, vmap = induced_subgraph(g, surviving_vertices)
-    
+
     for comp in connected_components(sub_g)
         orig_comp = [vmap[v] for v in comp]
         if !isdisjoint(orig_comp, controller_set)
             union!(active_nodes, orig_comp)
         end
     end
-    
+
     return active_nodes
 end
 function get_active_components(g::MetaGraph, controllers::Vector{Int}, attacks::Vector{Int})
     attack_set = Set(attacks)
     controller_set = Set(controllers)
     active_components = Vector{Set{Int}}()
-    
+
     surviving_vertices = [v for v in vertices(g) if !(v in attack_set)]
     sub_g, vmap = induced_subgraph(g, surviving_vertices)
-    
+
     for comp in connected_components(sub_g)
         orig_comp = Set([vmap[v] for v in comp])
         if !isdisjoint(orig_comp, controller_set)
             push!(active_components, orig_comp)
         end
     end
-    
+
     return active_components
 end
 function extract_coordinates(g::MetaGraph)
@@ -40,13 +40,30 @@ function extract_coordinates(g::MetaGraph)
     return x_coords, y_coords, locs
 end
 
-function determine_network_styles(g::MetaGraph, controllers::Vector{Int}, attacks::Vector{Int}, markercolor, markerstrokecolor, linecolor)
+function determine_network_styles(
+    g::MetaGraph,
+    controllers::Vector{Int},
+    attacks::Vector{Int},
+    markercolor,
+    markerstrokecolor,
+    linecolor,
+)
     inactive_color = plot_color("#E5E5E5")
-    comp_palette = plot_color.([:black, :darkgreen, :darkorange, :purple, :teal, :saddlebrown, :magenta, :olive])
-    
+    comp_palette =
+        plot_color.([
+            :black,
+            :darkgreen,
+            :darkorange,
+            :purple,
+            :teal,
+            :saddlebrown,
+            :magenta,
+            :olive,
+        ])
+
     # Custom Blue Gradient for Controller Load
     # lightblue = Low Load, darkblue = High Load
-    blue_heatmap = cgrad([:lightblue, :darkblue]) 
+    blue_heatmap = cgrad([:lightblue, :darkblue])
 
     n_colors = fill(plot_color(markercolor), nv(g))
     n_shapes = fill(:circle, nv(g))
@@ -56,7 +73,7 @@ function determine_network_styles(g::MetaGraph, controllers::Vector{Int}, attack
     attack_set = Set(attacks)
     controller_set = Set(controllers)
 
-    node_to_comp = Dict{Int, Int}()
+    node_to_comp = Dict{Int,Int}()
     for (i, comp) in enumerate(active_components)
         for v in comp
             node_to_comp[v] = i
@@ -71,7 +88,7 @@ function determine_network_styles(g::MetaGraph, controllers::Vector{Int}, attack
         elseif haskey(node_to_comp, v)
             if v in controller_set
                 # Apply Blue Heatmap only to active controllers
-                n_colors[v] = blue_heatmap[rand()] 
+                n_colors[v] = blue_heatmap[rand()]
                 n_shapes[v] = :hexagon
                 n_strokes[v] = plot_color(:black)
             else
@@ -87,10 +104,12 @@ function determine_network_styles(g::MetaGraph, controllers::Vector{Int}, attack
         end
     end
 
-    e_color_dict = Dict{Tuple{Int, Int}, typeof(inactive_color)}()
+    e_color_dict = Dict{Tuple{Int,Int},typeof(inactive_color)}()
     for e in edges(g)
         u, v = src(e), dst(e)
-        if haskey(node_to_comp, u) && haskey(node_to_comp, v) && node_to_comp[u] == node_to_comp[v]
+        if haskey(node_to_comp, u) &&
+           haskey(node_to_comp, v) &&
+           node_to_comp[u] == node_to_comp[v]
             c_idx = node_to_comp[u]
             c = comp_palette[mod1(c_idx, length(comp_palette))]
         else
@@ -99,7 +118,7 @@ function determine_network_styles(g::MetaGraph, controllers::Vector{Int}, attack
         e_color_dict[(u, v)] = c
         e_color_dict[(v, u)] = c
     end
-    
+
     e_colors = (s, d, w) -> get(e_color_dict, (s, d), inactive_color)
 
     return n_colors, n_shapes, n_strokes, e_colors, inactive_color
@@ -107,13 +126,67 @@ end
 
 function add_network_legend!(p, markercolor, markerstrokecolor, inactive_color)
     # Heatmap specific legend entries
-    scatter!(p, [NaN], [NaN], label="Low Load (Controller)", markercolor=:lightblue, markershape=:hexagon, markerstrokecolor=:black, framestyle=:none)
-    scatter!(p, [NaN], [NaN], label="High Load (Controller)", markercolor=:darkblue, markershape=:hexagon, markerstrokecolor=:black, framestyle=:none)
-    
-    scatter!(p, [NaN], [NaN], label="Active Switch", markercolor=markercolor, markershape=:circle, markerstrokecolor=markerstrokecolor, framestyle=:none)
-    scatter!(p, [NaN], [NaN], label="Attack Node", markercolor=inactive_color, markershape=:rect, markerstrokecolor=:red, framestyle=:none)
-    scatter!(p, [NaN], [NaN], label="Inactive Node", markercolor=inactive_color, markershape=:circle, markerstrokecolor=inactive_color, framestyle=:none)
-    scatter!(p, [NaN], [NaN], label="Attacked Controller", markercolor=:lightblue, markershape=:rect, markerstrokecolor=:red, framestyle=:none)
+    scatter!(
+        p,
+        [NaN],
+        [NaN],
+        label = "Low Load (Controller)",
+        markercolor = :lightblue,
+        markershape = :hexagon,
+        markerstrokecolor = :black,
+        framestyle = :none,
+    )
+    scatter!(
+        p,
+        [NaN],
+        [NaN],
+        label = "High Load (Controller)",
+        markercolor = :darkblue,
+        markershape = :hexagon,
+        markerstrokecolor = :black,
+        framestyle = :none,
+    )
+
+    scatter!(
+        p,
+        [NaN],
+        [NaN],
+        label = "Active Switch",
+        markercolor = markercolor,
+        markershape = :circle,
+        markerstrokecolor = markerstrokecolor,
+        framestyle = :none,
+    )
+    scatter!(
+        p,
+        [NaN],
+        [NaN],
+        label = "Attack Node",
+        markercolor = inactive_color,
+        markershape = :rect,
+        markerstrokecolor = :red,
+        framestyle = :none,
+    )
+    scatter!(
+        p,
+        [NaN],
+        [NaN],
+        label = "Inactive Node",
+        markercolor = inactive_color,
+        markershape = :circle,
+        markerstrokecolor = inactive_color,
+        framestyle = :none,
+    )
+    scatter!(
+        p,
+        [NaN],
+        [NaN],
+        label = "Attacked Controller",
+        markercolor = :lightblue,
+        markershape = :rect,
+        markerstrokecolor = :red,
+        framestyle = :none,
+    )
 end
 
 function add_network_labels!(p, g::MetaGraph, locs, x_coords, y_coords, fontsize)
@@ -122,7 +195,7 @@ function add_network_labels!(p, g::MetaGraph, locs, x_coords, y_coords, fontsize
 
     for i in vertices(g)
         has_upper_edge = any(y_coords[j] > y_coords[i] for j in neighbors(g, i))
-        
+
         if has_upper_edge
             lbl_y = y_coords[i] - offset
             valign = :top
@@ -130,14 +203,19 @@ function add_network_labels!(p, g::MetaGraph, locs, x_coords, y_coords, fontsize
             lbl_y = y_coords[i] + offset
             valign = :bottom
         end
-        
+
         annotate!(p, x_coords[i], lbl_y, text(locs[i][3], fontsize, :center, valign))
     end
 end
 
-function calculate_tikz_label_position(g::MetaGraph, v::Int, x_coords::AbstractVector, y_coords::AbstractVector)
+function calculate_tikz_label_position(
+    g::MetaGraph,
+    v::Int,
+    x_coords::AbstractVector,
+    y_coords::AbstractVector,
+)
     neighbor_nodes = neighbors(g, v)
-    
+
     # Default for isolated nodes
     if isempty(neighbor_nodes)
         return "above"
@@ -159,14 +237,14 @@ function calculate_tikz_label_position(g::MetaGraph, v::Int, x_coords::AbstractV
     else
         sort!(angles)
         max_gap = 0.0
-        
+
         n_angles = length(angles)
-        for i in 1:n_angles
+        for i = 1:n_angles
             θ1 = angles[i]
             # Wrap around for the last angle
             θ2 = i == n_angles ? angles[1] + 2π : angles[i+1]
             gap = θ2 - θ1
-            
+
             if gap > max_gap
                 max_gap = gap
                 target_angle = mod2pi(θ1 + gap / 2.0)
@@ -186,7 +264,7 @@ function calculate_tikz_label_position(g::MetaGraph, v::Int, x_coords::AbstractV
         4 => "left",
         5 => "below left",
         6 => "below",
-        7 => "below right"
+        7 => "below right",
     )
 
     return positions[octant]
@@ -197,7 +275,7 @@ function calculate_node_probabilities(
     strategies::Vector{Vector{Int}},
     probabilities::Vector{Float64},
 )
-    node_probs = Dict{Int, Float64}()
+    node_probs = Dict{Int,Float64}()
 
     for (strategy, prob) in zip(strategies, probabilities)
         for v in strategy
@@ -210,30 +288,30 @@ end
 
 function generate_tikz(
     g::MetaGraph;
-    controllers::Union{Placements, Nothing}=nothing, 
-    attacks::Union{Vector{Int}, Nothing}=nothing, 
-    show_labels::Bool=true,
-    save_path::Union{String, Nothing}=nothing,
-    rotate_deg::Real=0.0,
-    flip_x::Bool=false,
-    flip_y::Bool=false
+    controllers::Union{Placements,Nothing} = nothing,
+    attacks::Union{Vector{Int},Nothing} = nothing,
+    show_labels::Bool = true,
+    save_path::Union{String,Nothing} = nothing,
+    rotate_deg::Real = 0.0,
+    flip_x::Bool = false,
+    flip_y::Bool = false,
 )
     x_coords, y_coords, locs = extract_coordinates(g)
-    
+
     # Transformations
     transformed_locs = Dict()
     rad = deg2rad(rotate_deg)
-    
+
     for v in vertices(g)
         x, y = locs[v][1], locs[v][2]
-        
+
         # Apply rotation
         if rotate_deg != 0.0
             x_rot = x * cos(rad) - y * sin(rad)
             y_rot = x * sin(rad) + y * cos(rad)
             x, y = x_rot, y_rot
         end
-        
+
         # Apply flips
         if flip_x
             x = -x
@@ -244,7 +322,7 @@ function generate_tikz(
 
         transformed_locs[v] = tuple(x, y, locs[v][3:end]...)
     end
-    
+
     locs = transformed_locs
 
     x_coords = [locs[v][1] for v in vertices(g)]
@@ -256,15 +334,15 @@ function generate_tikz(
         union!(pc_set, controllers.pc)
         union!(bc_set, controllers.bc)
     end
-    
+
     controller_set = union(pc_set, bc_set)
     ctrl_vec = collect(controller_set)
     atk_vec = isnothing(attacks) ? Int[] : collect(Int, attacks)
-    
+
     active_components = get_active_components(g, ctrl_vec, atk_vec)
     attack_set = Set(atk_vec)
 
-    node_to_comp = Dict{Int, Int}()
+    node_to_comp = Dict{Int,Int}()
     for (i, comp) in enumerate(active_components)
         for v in comp
             node_to_comp[v] = i
@@ -273,7 +351,7 @@ function generate_tikz(
 
     io = IOBuffer()
     println(io, "\\begin{tikzpicture}[scale=0.25]\n")
-    
+
     println(io, "  % --- STYLES ---")
     println(io, "  \\tikzset{")
     println(io, "    every label/.append style={font=\\scriptsize, label distance=-1pt},")
@@ -281,19 +359,22 @@ function generate_tikz(
     println(io, "    v_pc/.style = {circle, fill=cyan, inner sep=1.2pt},")
     println(io, "    v_bc/.style = {circle, fill=olive, inner sep=1,2pt},")
     println(io, "    v_dead/.style = {circle, fill=gray!50, inner sep=1.2pt},")
-    println(io, "    attack_box/.style = {rectangle, draw=red, thick, inner sep=2.6pt, fill=none},")
+    println(
+        io,
+        "    attack_box/.style = {rectangle, draw=red, thick, inner sep=2.6pt, fill=none},",
+    )
     println(io, "    e/.style = {-, thin, black},")
     println(io, "    e_dead/.style = {-, thin, gray!30}")
     println(io, "  }\n")
-    
+
     println(io, "  % --- NODES ---")
-    
+
     sorted_vertices = sort(collect(vertices(g)))
-    
+
     for v in sorted_vertices
-        x = round(locs[v][1], digits=4)
-        y = round(locs[v][2], digits=4)
-        
+        x = round(locs[v][1], digits = 4)
+        y = round(locs[v][2], digits = 4)
+
         tikz_id = "node_$v"
 
         if v in pc_set
@@ -307,34 +388,38 @@ function generate_tikz(
         else
             style = "v_dead"
         end
-        
+
         if show_labels
             label_pos = calculate_tikz_label_position(g, v, x_coords, y_coords)
             node_options = "$style, label={$label_pos:{$v}}"
         else
             node_options = "$style"
         end
-        
+
         println(io, "  \\node[$node_options] ($tikz_id) at ($x, $y) {};")
-        
+
         if v in attack_set
             println(io, "  \\node[attack_box] at ($x, $y) {};")
         end
     end
-    
+
     println(io, "\n  % --- LINKS ---")
     for e in edges(g)
         u, v = src(e), dst(e)
-        
+
         tikz_u = "node_$u"
         tikz_v = "node_$v"
-        
-        if isempty(attack_set) || (haskey(node_to_comp, u) && haskey(node_to_comp, v) && node_to_comp[u] == node_to_comp[v])
+
+        if isempty(attack_set) || (
+            haskey(node_to_comp, u) &&
+            haskey(node_to_comp, v) &&
+            node_to_comp[u] == node_to_comp[v]
+        )
             edge_style = "e"
         else
             edge_style = "e_dead"
         end
-        
+
         println(io, "  \\draw[$edge_style] ($tikz_u) -- ($tikz_v);")
     end
 
@@ -352,85 +437,94 @@ end
 
 function generate_heatmap_tikz(
     g::MetaGraph,
-    node_probs::Dict{Int, Float64};
+    node_probs::Dict{Int,Float64};
     color::String = "black",
-    show_labels::Bool=true,
-    save_path::Union{String, Nothing}=nothing,
-    rotate_deg::Real=0.0,
-    flip_x::Bool=false,
-    flip_y::Bool=false
+    show_labels::Bool = true,
+    save_path::Union{String,Nothing} = nothing,
+    rotate_deg::Real = 0.0,
+    flip_x::Bool = false,
+    flip_y::Bool = false,
 )
     # Assume extract_coordinates and calculate_tikz_label_position are defined elsewhere
     x_coords, y_coords, locs = extract_coordinates(g)
-    
+
     # Transformations
     transformed_locs = Dict()
     rad = deg2rad(rotate_deg)
-    
+
     for v in vertices(g)
         x, y = locs[v][1], locs[v][2]
-        
+
         # Apply rotation
         if rotate_deg != 0.0
             x_rot = x * cos(rad) - y * sin(rad)
             y_rot = x * sin(rad) + y * cos(rad)
             x, y = x_rot, y_rot
         end
-        
+
         # Apply flips
-        if flip_x; x = -x; end
-        if flip_y; y = -y; end
+        if flip_x
+            x = -x
+        end
+        if flip_y
+            y = -y
+        end
 
         transformed_locs[v] = tuple(x, y, locs[v][3:end]...)
     end
-    
+
     locs = transformed_locs
-    
+
     # Find the maximum probability for normalization
     max_prob = isempty(node_probs) ? 1.0 : maximum(values(node_probs))
 
     io = IOBuffer()
     println(io, "\\begin{tikzpicture}[scale=0.25]\n")
-    
+
     println(io, "  % --- STYLES ---")
     println(io, "  \\tikzset{")
     println(io, "    every label/.append style={font=\\scriptsize, label distance=-1pt},")
     println(io, "    v_base/.style = {circle, draw=black, thin, inner sep=1.2pt},")
     println(io, "    e/.style = {-, thin, black}")
     println(io, "  }\n")
-    
+
     println(io, "  % --- NODES ---")
     sorted_vertices = sort(collect(vertices(g)))
-    
+
     for v in sorted_vertices
-        x = round(locs[v][1], digits=4)
-        y = round(locs[v][2], digits=4)
-        
+        x = round(locs[v][1], digits = 4)
+        y = round(locs[v][2], digits = 4)
+
         tikz_id = "node_$v"
 
         # Calculate normalized color intensity
         prob = get(node_probs, v, 0.0)
-        
+
         if max_prob > 0
             # Scale intensity relative to the maximum probability
             intensity = round(Int, (prob / max_prob) * 100)
         else
             intensity = 0
         end
-        
+
         # Mix red with blue
         fill_color = "red!$(intensity)!blue"
-        
+
         if show_labels
-            label_pos = calculate_tikz_label_position(g, v, [locs[i][1] for i in vertices(g)], [locs[i][2] for i in vertices(g)])
+            label_pos = calculate_tikz_label_position(
+                g,
+                v,
+                [locs[i][1] for i in vertices(g)],
+                [locs[i][2] for i in vertices(g)],
+            )
             node_options = "v_base, fill=$fill_color, label={$label_pos:{$v}}"
         else
             node_options = "v_base, fill=$fill_color"
         end
-        
+
         println(io, "  \\node[$node_options] ($tikz_id) at ($x, $y) {};")
     end
-    
+
     println(io, "\n  % --- LINKS ---")
     for e in edges(g)
         u, v = src(e), dst(e)
@@ -438,12 +532,18 @@ function generate_heatmap_tikz(
     end
 
     println(io, "\n  % --- LEGEND ---")
-    max_str = round(max_prob, digits=3)
-    mid_str = round(max_prob / 2, digits=3)
-    
+    max_str = round(max_prob, digits = 3)
+    mid_str = round(max_prob / 2, digits = 3)
+
     # Use current bounding box to shift the legend safely outside the network
-    println(io, "  \\begin{scope}[shift={(current bounding box.north east)}, xshift=1.5cm, yshift=0cm]")
-    println(io, "    \\node[right, font=\\scriptsize, yshift=0.3cm] at (0, 0) {Probability};")
+    println(
+        io,
+        "  \\begin{scope}[shift={(current bounding box.north east)}, xshift=1.5cm, yshift=0cm]",
+    )
+    println(
+        io,
+        "    \\node[right, font=\\scriptsize, yshift=0.3cm] at (0, 0) {Probability};",
+    )
     println(io, "    \\shade[top color=red, bottom color=blue] (0, 0) rectangle (0.5, -4);")
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, 0) {$max_str};")
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, -2) {$mid_str};")

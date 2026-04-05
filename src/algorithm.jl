@@ -12,13 +12,13 @@ end
 # A1: Algorithm for controller placement optimization by means of
 # attack generation 
 function pure_controller_placement(
-    g :: MetaGraph,
-    M :: Int,
-    K :: Int;
-    BCC :: Union{Nothing, Float64} = nothing,
-    BSC :: Union{Nothing, Float64} = nothing,
+    g::MetaGraph,
+    M::Int,
+    K::Int;
+    BCC::Union{Nothing,Float64} = nothing,
+    BSC::Union{Nothing,Float64} = nothing,
     optim = DEFAULT_OPTIM,
-    tol = 1e-9
+    tol = 1e-9,
 )
     V = nv(g)
 
@@ -34,7 +34,7 @@ function pure_controller_placement(
     #         This assures Z* surviving nodes.
     count = 0
     while true
-        res = naop(g, K, [s_star]; optim=optim)
+        res = naop(g, K, [s_star]; optim = optim)
         Z_star = res.objective_value
 
         naop_time_ms += res.time
@@ -46,7 +46,7 @@ function pure_controller_placement(
         push!(attacks, res.attack)
 
         # Step 2: Solve CPOP to get better placement.
-        res = cpop(g, M, attacks; optim=optim, BCC=BCC, BSC=BSC)
+        res = cpop(g, M, attacks; optim = optim, BCC = BCC, BSC = BSC)
         Y_star = res.objective_value
         s_star = res.controllers
 
@@ -54,7 +54,9 @@ function pure_controller_placement(
         local_cpop_time = res.time
 
         count += 1
-        println("Z_star: $Z_star, Y_star: $Y_star, naop_time: $local_naop_time, cpop_time: $local_cpop_time")
+        println(
+            "Z_star: $Z_star, Y_star: $Y_star, naop_time: $local_naop_time, cpop_time: $local_cpop_time",
+        )
     end
 
     (
@@ -69,11 +71,11 @@ end
 
 # A2: Pure Strategy Attack Generation by means of controller placement optimization
 function pure_attack_generation(
-    g :: MetaGraph,
-    M :: Int,
-    K :: Int;
-    BCC :: Union{Nothing, Float64} = nothing,
-    BSC :: Union{Nothing, Float64} = nothing,
+    g::MetaGraph,
+    M::Int,
+    K::Int;
+    BCC::Union{Nothing,Float64} = nothing,
+    BSC::Union{Nothing,Float64} = nothing,
     optim = DEFAULT_OPTIM,
     tol = 1e-9,
 )
@@ -90,7 +92,7 @@ function pure_attack_generation(
     # Step 1
     count = 0
     while true
-        res = cpop(g, M, [a_star]; optim=optim, BCC, BSC)
+        res = cpop(g, M, [a_star]; optim = optim, BCC, BSC)
         Y_star = res.objective_value
 
         cpop_time_ms += res.time
@@ -102,14 +104,16 @@ function pure_attack_generation(
         push!(placements, res.controllers)
 
         # Step 2
-        res = naop(g, K, placements; optim=optim)
+        res = naop(g, K, placements; optim = optim)
         Z_star = res.objective_value
         a_star = res.attack
 
         naop_time_ms += res.time
         local_naop_time = res.time
 
-        println("Z_star: $Z_star, Y_star: $Y_star, naop_time: $local_naop_time, cpop_time: $local_cpop_time")
+        println(
+            "Z_star: $Z_star, Y_star: $Y_star, naop_time: $local_naop_time, cpop_time: $local_cpop_time",
+        )
 
         count += 1
     end
@@ -129,18 +133,18 @@ function mixed_strategies_colgen(
     P::Union{Int,IntBound},
     B::Union{Int,IntBound},
     K::Union{Int,IntBound};
-    M::Union{Nothing,Int}=nothing,
-    optim=DEFAULT_OPTIM,
-    BCC::Union{Float64, Nothing}=nothing,
-    BSC::Union{Float64, Nothing}=nothing,
-    control_capacity::Dict{Int,Float64}=Dict{Int,Float64}(),
-    control_demand::Dict{Int,Float64}=Dict{Int,Float64}(),
-    R::Union{Float64, Nothing}=nothing,
-    attack_cost::Dict{Int,Float64}=Dict{Int,Float64}(),
-    placement_list::Vector{Placements}=Placements[],
-    placement_difference::Int=1,
-    dists::Union{Matrix{Float64},Nothing}=nothing,
-    time_limit::Float64=TIME_LIMIT
+    M::Union{Nothing,Int} = nothing,
+    optim = DEFAULT_OPTIM,
+    BCC::Union{Float64,Nothing} = nothing,
+    BSC::Union{Float64,Nothing} = nothing,
+    control_capacity::Dict{Int,Float64} = Dict{Int,Float64}(),
+    control_demand::Dict{Int,Float64} = Dict{Int,Float64}(),
+    R::Union{Float64,Nothing} = nothing,
+    attack_cost::Dict{Int,Float64} = Dict{Int,Float64}(),
+    placement_list::Vector{Placements} = Placements[],
+    placement_difference::Int = 1,
+    dists::Union{Matrix{Float64},Nothing} = nothing,
+    time_limit::Float64 = TIME_LIMIT,
 )
     V = nv(g)
     K′, K″ = @unpack_bounds K
@@ -148,15 +152,24 @@ function mixed_strategies_colgen(
     # Step 0 
     # Initialize list of placements and list of attacks
     res = generate_controller_placement(
-        g, P, B; M, optim, BCC, BSC, control_capacity,
-        control_demand, placement_list, placement_difference,
-        dists
+        g,
+        P,
+        B;
+        M,
+        optim,
+        BCC,
+        BSC,
+        control_capacity,
+        control_demand,
+        placement_list,
+        placement_difference,
+        dists,
     )
     placementset = Placements[res.controllers]
     attackset = Attacks[randvec(V, K″)]
 
     update_master() = begin
-        res = mixed_strategies_master(g, placementset, attackset; optim=optim)
+        res = mixed_strategies_master(g, placementset, attackset; optim = optim)
         @assert res != :infeasible "Master Problem is Infeasible"
         return res.objective, res.p_star, res.q_star
     end
@@ -176,10 +189,20 @@ function mixed_strategies_colgen(
         # Step 1
         # Solve the placement gen problem to get placement s′
         p_res = mixed_strategies_pricing_placement(
-            g, P, B, attackset, p_star;
-            optim, M, BCC, BSC, dists,
-            control_capacity, control_demand,
-            time_limit, history=placementset,
+            g,
+            P,
+            B,
+            attackset,
+            p_star;
+            optim,
+            M,
+            BCC,
+            BSC,
+            dists,
+            control_capacity,
+            control_demand,
+            time_limit,
+            history = placementset,
         )
 
         time_limit -= p_res.time
@@ -200,9 +223,15 @@ function mixed_strategies_colgen(
         obj, p_star, q_star = update_master()
 
         a_res = mixed_strategies_pricing_attack(
-            g, K, placementset, q_star; optim=optim,
-            R, attack_cost,
-            time_limit, history=attackset,
+            g,
+            K,
+            placementset,
+            q_star;
+            optim = optim,
+            R,
+            attack_cost,
+            time_limit,
+            history = attackset,
         )
         time_limit -= a_res.time
 
@@ -222,18 +251,17 @@ function mixed_strategies_colgen(
         obj, p_star, q_star = update_master()
     end
 
-    (
-        ;
+    (;
         attackset,
         placementset,
         p_star,
         q_star,
         placement_times,
         attack_times,
-        objective=obj,
+        objective = obj,
 
         # Objective value for statistics 
-        x_stars=xstars,
-        y_stars=ystars,
+        x_stars = xstars,
+        y_stars = ystars,
     )
 end
