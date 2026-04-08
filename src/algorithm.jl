@@ -130,118 +130,100 @@ end
 
 function mixed_strategies_colgen(
     g::MetaGraph,
-    P::Union{Int,IntBound},
-    B::Union{Int,IntBound},
-    K::Union{Int,IntBound};
-    M::Union{Nothing,Int} = nothing,
-    optim = DEFAULT_OPTIM,
-    BCC::Union{Float64,Nothing} = nothing,
-    BSC::Union{Float64,Nothing} = nothing,
-    control_capacity::Dict{Int,Float64} = Dict{Int,Float64}(),
-    control_demand::Dict{Int,Float64} = Dict{Int,Float64}(),
-    R::Union{Float64,Nothing} = nothing,
-    attack_cost::Dict{Int,Float64} = Dict{Int,Float64}(),
-    placement_list::Vector{Placements} = Placements[],
-    placement_difference::Int = 1,
-    dists::Union{Matrix{Float64},Nothing} = nothing,
+    placement_config::PlacementConfig,
+    attack_config::AttackConfig;
+    controller_constraints::Union{ControllerConstraints,Nothing} = nothing,
+    delay_constraints::Union{DelayConstraintsConfig,Nothing} = nothing,
+    capacity_constraints::Union{CapacityConstraintsConfig,Nothing} = nothing,
+    cost_config::Union{AttackCostConfig,Nothing} = nothing,
+    optim=DEFAULT_OPTIM,
     time_limit::Float64 = TIME_LIMIT,
 )
     V = nv(g)
-    K′, K″ = @unpack_bounds K
+    _, K″ = @unpack_bounds attack_config.K
 
-    # Step 0 
-    # Initialize list of placements and list of attacks
     res = generate_controller_placement(
         g,
-        P,
-        B;
-        M,
+        placement_config;
+        controller_constraints,
+        delay_constraints,
+        capacity_constraints,
         optim,
-        BCC,
-        BSC,
-        control_capacity,
-        control_demand,
-        placement_list,
-        placement_difference,
-        dists,
     )
+
     placementset = Placements[res.controllers]
     attackset = Attacks[randvec(V, K″)]
 
     update_master() = begin
-        res = mixed_strategies_master(g, placementset, attackset; optim = optim)
-        @assert res != :infeasible "Master Problem is Infeasible"
-        return res.objective, res.p_star, res.q_star
+        res = mixed_strategies_master(
+            g, placementset, attackset; optim
+        )
+        @assert res != :infeasible "Master problem is infeasible"
+        (
+            obj = res.objective,
+            p_star = res.p_star,
+            q_star = res.q_star,
+        )
     end
 
+    has_changed = true
     obj, p_star, q_star = update_master()
 
-    has_changed = true
+    # Primal solution (controller's master problem)
+    x_stars = Float64[]
+    # Dual solution (attacker's master problem)
+    y_stars = Float64[]
 
-    xstars = Float64[]
-    ystars = Float64[]
-
+    # We also store the timestamps.
+    master_times = Float64[]
     placement_times = Float64[]
     attack_times = Float64[]
 
     while has_changed
         has_changed = false
         # Step 1
-        # Solve the placement gen problem to get placement s′
-        p_res = mixed_strategies_pricing_placement(
-            g,
-            P,
-            B,
+        # Sovle the placement generation problem to get
+        # placement s′
+        placement_config = PlacementConfig(
+            placement_config.M,
             attackset,
-            p_star;
+            p_star,
+        )
+        p_res = mixed_strategies_pricing_placement(
+            g, 
+            placement_config;
+            controller_constraints,
+            delay_constraints,
+            capacity_constraints,
             optim,
-            M,
-            BCC,
-            BSC,
-            dists,
-            control_capacity,
-            control_demand,
-            time_limit,
-            history = placementset,
         )
 
-        time_limit -= p_res.time
-
-        s′ = p_res.s
-
+        s′ = p_res.s 
         push!(placement_times, p_res.time)
-        push!(xstars, obj)
+        push!(x_stars, obj)
 
-        if [length(surviving_nodes(g, s′, a)) for a in attackset] ⋅ p_star > obj
+        if [length(surviving_nodes(g, s′, a)) for a in attackset] ⋅ p_star > obj 
             if !(s′ in placementset)
+                # We found a better placement.
                 push!(placementset, s′)
                 has_changed = true
             end
         end
 
-        # Step 2 Solve the attack generation problem
+        # Step 2, solve the attack generation problem 
         obj, p_star, q_star = update_master()
 
+        # Generate a new attack.
+        attack_config = AttackConfig(attack_config.K, placementset, q_star)
         a_res = mixed_strategies_pricing_attack(
-            g,
-            K,
-            placementset,
-            q_star;
-            optim = optim,
-            R,
-            attack_cost,
-            time_limit,
-            history = attackset,
+            g, attack_config; cost_config,
         )
-        time_limit -= a_res.time
 
-        # @assert a_res != :infeasible "Pricing Attack is infeasible"
-        a′ = a_res.a
-
+        a′ = a_res.a # The new attack 
         push!(attack_times, a_res.time)
-        push!(ystars, obj)
+        push!(y_stars, obj)
 
-        if obj > [length(surviving_nodes(g, s, a′)) for s in placementset] ⋅ q_star
+        if obj > [length(surviving_nodes(g, s, a′)) for s in placementset] ⋅ q_star 
             if !(a′ in attackset)
                 push!(attackset, a′)
                 has_changed = true
@@ -261,7 +243,7 @@ function mixed_strategies_colgen(
         objective = obj,
 
         # Objective value for statistics 
-        x_stars = xstars,
-        y_stars = ystars,
+        x_stars = x_stars,
+        y_stars = y_stars,
     )
 end

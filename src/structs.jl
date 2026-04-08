@@ -18,22 +18,32 @@ const IntBound = Tuple{Int,Int}
 const Attacks = Vector{Int}
 
 # # Base Config for the placement problem for mixed-strategies 
-@kwdef struct PlacementConfig
+@with_kw struct PlacementConfig
     # Total number of placements
     M::Int
     # Current set of attacks 
-    attacks::Vector{Attacks}
+    attacks::Vector{Attacks} = Attacks[]
     # The probability distribution of the attacks 
-    p::Vector{Float64}
+    p::Vector{Float64} = Float64[]
 end
 
+PlacementConfig(M::Int) = PlacementConfig(; M=M)
+
 # Base config for the attack problem for mixed-strategies.
-@kwdef struct AttackConfig
+@with_kw struct AttackConfig
     # Total Number of attacks 
     K::Union{Int,IntBound}
     # Current set of placements so far.
-    placements::Vector{Placements}
+    placements::Vector{Placements} = Placements[]
+    # The probability distribution of the placements 
+    q::Vector{Float64} = Float64[]
+
+    # AttackConfig(K::Union{Int,IntBound}, placements::Vector{Placements}, q::Vector{Float64}) =
+    #     AttackConfig(; K=K, placements=placements, q=q)
+    # AttackConfig(K::Union{Int,IntBound}) = AttackConfig(K, Placements[], Float64[])
 end
+
+AttackConfig(K::Union{Int,IntBound}) = AttackConfig(; K=K)
 
 # Backup controller config.
 @with_kw struct ControllerConstraints
@@ -48,13 +58,18 @@ end
     @assert B′ ≤ B″ "Backup controller lower bound should be less tha or equal to the upper bound"
 end
 
-@with_kw struct DelayConstraintsConfig
+@kwdef struct DelayConstraintsConfig
     # Controller-Controller Delay bound 
     BCC::Float64
     # Switch-Controller Delay bound 
     BSC::Float64
     # Distance matrix 
     distance_matrix::Matrix{Float64}
+
+    function DelayConstraintsConfig(g::AbstractGraph, BCC::Float64, BSC::Float64)
+        distance_matrix = get_distance_matrix(g)
+        return DelayConstraintsConfig(BCC, BSC, distance_matrix)
+    end
 end
 
 @with_kw struct CapacityConstraintsConfig
@@ -63,4 +78,9 @@ end
     arrivals::Dict{Int,Float64}
 
     @assert !isempty(controller_capacity) && !isempty(arrivals)
+end
+
+@kwdef struct AttackCostConfig
+    R :: Float64 # Total attacker's budget.
+    cost::Dict{Int,Float64}
 end

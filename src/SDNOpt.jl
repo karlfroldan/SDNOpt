@@ -13,6 +13,7 @@ using LinearAlgebra
 using JLD2
 using Dates
 using DataFrames
+using SmartAsserts: @smart_assert
 
 using Distributions
 
@@ -48,7 +49,7 @@ export mixed_strategies_colgen
 export generate_tikz, generate_heatmap_tikz, calculate_node_probabilities
 
 ### Exports from structs.jl
-export Placements, Attacks, PlacementConfig, AttackConfig
+export Placements, Attacks, PlacementConfig, AttackConfig, AttackCostConfig
 export ControllerConstraints, DelayConstraintsConfig, CapacityConstraintsConfig
 
 import Base: ==, hash

@@ -18,6 +18,82 @@ function add_uniqueness_constraint!(
     end
 end
 
+"""
+    add_attack_constraint!(g, m, attack_config)
+
+Add a constraint that bounds the number of attacks done on the network.
+Introduces the variable `a[1:V]`.
+"""
+function add_attack_constraint!(
+    g::MetaGraph,
+    m::Model,
+    attack_config::AttackConfig,
+)
+    V = nv(g)
+
+    K = attack_config.K
+
+    # Whether to attack a node or not.
+    @variable(m, a[1:V], Bin)
+
+    # The number of nodes to attack.
+    if K isa Int 
+        @constraint(m, sum(a) == K)
+    else
+        K′, K″ = @unpack_bounds K
+        @constraint(m, K′ ≤ sum(a) ≤ K″)
+    end
+end
+
+"""
+    add_edge_propagation_constraints!(g, m, attack_config, placements, q_star)
+
+Adds constraints that will ensure that nodes that do not have access 
+to controllers do not survive. This constraint also count the number 
+of surviving nodes. Introduces the variables `F[1:|S|]`, `z[1:V, 1:|S|]`
+"""
+function add_edge_propagation_constraints!(
+    g::MetaGraph,
+    m::Model,
+    attack_config::AttackConfig;
+    tol::Float64 = 1e-9,
+)
+    V = nv(g)
+
+    a = m[:a]
+
+    # Reduce the problem size.
+    q = attack_config.q
+    active_idxs = [i for (i, val) in enumerate(q) if val > tol]
+    S′ = attack_config.placements[active_idxs]
+
+    slen = length(S′)
+
+    @variable(m, F[1:slen] >= 0, Int)
+    @variable(m, z[1:V, 1:slen], Bin)
+
+    @constraint(
+        m,
+        [(s, ps) in enumerate(S′)],
+        z[all_controllers(ps), s] .== 1 .- a[all_controllers(ps)]
+    )
+
+    for edge in edges(g)
+        α, β = edge.src, edge.dst
+        @constraint(m, [s in eachindex(S′)], z[β, s] .≥ z[α, s] .- a[β])
+        @constraint(m, [s in eachindex(S′)], z[α, s] .≥ z[β, s] .- a[α])
+    end
+
+    @constraint(m, [s in eachindex(S′)], F[s] == sum(z[:, s]))
+end
+
+function add_attack_cost_constraints!(m::Model, cost_config::AttackCostConfig)
+    R = cost_config.R
+    attack_cost = cost_config.cost
+
+    @constraint(m, sum(attack_cost[v] * a[v] for v = 1:V) ≤ R)
+end
+
 # Placements with one variable 
 function add_uniqueness_constraint!(
     m::Model,
@@ -199,7 +275,7 @@ function add_survivability_constraints!(
     alen = length(attackset)
 
     # The number of surviving nodes given attack a 
-    @variable(m, Y[1:alen], Bin)
+    @variable(m, Y[1:alen] >= 0, Int)
 
     C_sets = Dict(
         a => components(attack_graph(g, attack)) for (a, attack) in enumerate(attackset)
@@ -222,7 +298,6 @@ function add_survivability_constraints!(
             else
                 # The set of backup controller nodes 
                 r = m[:r]
-
                 @constraint(m, S[a, c] .≤ sum(s[vs] + r[vs]))
             end
         end
@@ -508,8 +583,7 @@ function generate_controller_placement(
 
     time_taken = @solve_problem!(m)
 
-    placement = Placements(to_indices(s), to_indices(r))
-
+    placement = get_controller_placements(m; with_backups=!isnothing(controller_constraints))
     (controllers = placement, time = time_taken, model = m)
 end
 
@@ -571,6 +645,8 @@ function mixed_strategies_pricing_placement(
     optim = DEFAULT_OPTIM,
     time_limit::Union{Nothing,Float64} = nothing,
 )
+    @smart_assert length(placement_config.attacks) == length(placement_config.p)
+
     m = Model(optim)
     p = placement_config.p
     set_silent(m)
@@ -604,67 +680,39 @@ end
 
 function mixed_strategies_pricing_attack(
     g::MetaGraph,
-    K::Union{Int,IntBound},
-    placementset::Vector{Placements},
-    q::Vector{Float64};
-    optim = DEFAULT_OPTIM,
-    R::Union{Float64,Nothing} = nothing,
-    attack_cost::Dict{Int,Float64} = Dict{Int,Float64}(),
-    tol::Float64 = 1e-9,
-    time_limit::Union{Float64} = nothing,
+    attack_config::AttackConfig;
+    cost_config::Union{AttackCostConfig,Nothing}=nothing,
+    optim=DEFAULT_OPTIM,
+    tol::Float64 = 1e-9
 )
-    m = Model(optim)
-    set_silent(m)
+    @smart_assert length(attack_config.placements) == length(attack_config.q)
+    
+    placementset = attack_config.placements
+    q = attack_config.q
 
-    K′, K″ = @unpack_bounds K
-
-    if !isnothing(time_limit)
-        set_time_limit_sec(m, time_limit)
-    end
-
-    V = nv(g)
-
+    # Reduce the problem size.
     active_idxs = [i for (i, val) in enumerate(q) if val > tol]
     S′ = placementset[active_idxs]
     q′ = q[active_idxs]
 
-    slen = length(S′)
+    m = Model(optim)
+    set_silent(m)
 
-    @variable(m, F[1:slen] ≥ 0, Int)
-    @variable(m, a[1:V], Bin)
-    @variable(m, z[1:V, 1:slen], Bin)
+    # The number of attacks to perform 
+    add_attack_constraint!(g, m, attack_config)
 
+    # Edge propagation constraints 
+    add_edge_propagation_constraints!(g, m, attack_config)
+
+    # Attack cost constraints
+    if !isnothing(cost_config)
+        add_attack_cost_constraints!(m, cost_config)
+    end
+
+    F = m[:F]
+    a = m[:a]
     @objective(m, Min, q′ ⋅ F)
 
-    # (25b)
-    @constraint(m, K′ ≤ sum(a) ≤ K″)
-
-    # Attacker budget constraint
-    if !isnothing(R) && !isempty(attack_cost)
-        @constraint(m, sum(attack_cost[v] * a[v] for v = 1:V) ≤ R)
-    end
-
-    # (25c)
-    @constraint(
-        m,
-        [(s, ps) in enumerate(S′)],
-        z[all_controllers(ps), s] .== 1 .- a[all_controllers(ps)]
-    )
-
-    # (25d)
-    for edge in edges(g)
-        α, β = edge.src, edge.dst
-        @constraint(m, [s in eachindex(S′)], z[β, s] .≥ z[α, s] .- a[β])
-
-        @constraint(m, [s in eachindex(S′)], z[α, s] .≥ z[β, s] .- a[α])
-    end
-
-    # (25f)
-    @constraint(m, [s in eachindex(S′)], F[s] == sum(z[:, s]))
-
-    # @uniqueness_constraints(m, V, history, UNIQUE_NODE, a)
-
     time_taken = @solve_problem!(m)
-
     (time = time_taken, objective = objective_value(m), model = m, a = to_indices(a))
 end
