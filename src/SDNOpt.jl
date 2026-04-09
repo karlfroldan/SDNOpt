@@ -54,6 +54,9 @@ export ControllerConstraints, DelayConstraintsConfig, CapacityConstraintsConfig
 
 import Base: ==, hash
 
+### Exports from experiment.jl
+export run_experiments
+
 DEFAULT_OPTIM = CPLEX.Optimizer
 
 struct InfeasibleError <: Exception
@@ -79,5 +82,6 @@ include("network.jl")
 include("network_plot.jl")
 include("models.jl")
 include("algorithm.jl")
+include("experiment.jl")
 
 end

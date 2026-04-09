@@ -27,7 +27,7 @@ const Attacks = Vector{Int}
     p::Vector{Float64} = Float64[]
 end
 
-PlacementConfig(M::Int) = PlacementConfig(; M=M)
+PlacementConfig(M::Int) = PlacementConfig(; M = M)
 
 # Base config for the attack problem for mixed-strategies.
 @with_kw struct AttackConfig
@@ -43,7 +43,7 @@ PlacementConfig(M::Int) = PlacementConfig(; M=M)
     # AttackConfig(K::Union{Int,IntBound}) = AttackConfig(K, Placements[], Float64[])
 end
 
-AttackConfig(K::Union{Int,IntBound}) = AttackConfig(; K=K)
+AttackConfig(K::Union{Int,IntBound}) = AttackConfig(; K = K)
 
 # Backup controller config.
 @with_kw struct ControllerConstraints
@@ -81,6 +81,6 @@ end
 end
 
 @kwdef struct AttackCostConfig
-    R :: Float64 # Total attacker's budget.
+    R::Float64 # Total attacker's budget.
     cost::Dict{Int,Float64}
 end

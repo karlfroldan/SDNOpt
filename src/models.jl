@@ -24,11 +24,7 @@ end
 Add a constraint that bounds the number of attacks done on the network.
 Introduces the variable `a[1:V]`.
 """
-function add_attack_constraint!(
-    g::MetaGraph,
-    m::Model,
-    attack_config::AttackConfig,
-)
+function add_attack_constraint!(g::MetaGraph, m::Model, attack_config::AttackConfig)
     V = nv(g)
 
     K = attack_config.K
@@ -37,7 +33,7 @@ function add_attack_constraint!(
     @variable(m, a[1:V], Bin)
 
     # The number of nodes to attack.
-    if K isa Int 
+    if K isa Int
         @constraint(m, sum(a) == K)
     else
         K′, K″ = @unpack_bounds K
@@ -590,7 +586,8 @@ function generate_controller_placement(
 
     time_taken = @solve_problem!(m)
 
-    placement = get_controller_placements(m; with_backups=!isnothing(controller_constraints))
+    placement =
+        get_controller_placements(m; with_backups = !isnothing(controller_constraints))
     (controllers = placement, time = time_taken, model = m)
 end
 
@@ -672,7 +669,7 @@ function mixed_strategies_pricing_placement(
         add_delay_constraints!(g, m, delay_constraints; capacity_constraints)
     end
 
-    
+
 
     add_survivability_constraints!(g, m, placement_config; controller_constraints)
 
@@ -691,12 +688,12 @@ end
 function mixed_strategies_pricing_attack(
     g::MetaGraph,
     attack_config::AttackConfig;
-    cost_config::Union{AttackCostConfig,Nothing}=nothing,
-    optim=DEFAULT_OPTIM,
-    tol::Float64 = 1e-9
+    cost_config::Union{AttackCostConfig,Nothing} = nothing,
+    optim = DEFAULT_OPTIM,
+    tol::Float64 = 1e-9,
 )
     @smart_assert length(attack_config.placements) == length(attack_config.q)
-    
+
     placementset = attack_config.placements
     q = attack_config.q
 

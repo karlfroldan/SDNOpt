@@ -507,7 +507,7 @@ function generate_heatmap_tikz(
             # Scale intensity relative to the maximum probability
             intensity = round(Int, (prob / max_prob) * 100)
             # Scale size relative to the maximum probability
-            current_size = round(base_size + (prob / max_prob) * max_extra_size, digits=2)
+            current_size = round(base_size + (prob / max_prob) * max_extra_size, digits = 2)
         else
             intensity = 0
             current_size = base_size
@@ -554,13 +554,16 @@ function generate_heatmap_tikz(
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, 0) {$max_str};")
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, -2) {$mid_str};")
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, -4) {0.0};")
-    
+
     # Legend extensions for size
-    println(io, "    \\node[v_base, fill=red, inner sep=$(base_size + max_extra_size)pt] at (0.25, -5) {};")
+    println(
+        io,
+        "    \\node[v_base, fill=red, inner sep=$(base_size + max_extra_size)pt] at (0.25, -5) {};",
+    )
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, -5) {Max Size};")
     println(io, "    \\node[v_base, fill=blue, inner sep=$(base_size)pt] at (0.25, -6) {};")
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, -6) {Min Size};")
-    
+
     println(io, "  \\end{scope}")
 
     println(io, "\n\\end{tikzpicture}")

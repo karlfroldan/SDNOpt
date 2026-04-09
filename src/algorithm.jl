@@ -136,7 +136,7 @@ function mixed_strategies_colgen(
     delay_constraints::Union{DelayConstraintsConfig,Nothing} = nothing,
     capacity_constraints::Union{CapacityConstraintsConfig,Nothing} = nothing,
     cost_config::Union{AttackCostConfig,Nothing} = nothing,
-    optim=DEFAULT_OPTIM,
+    optim = DEFAULT_OPTIM,
     time_limit::Float64 = TIME_LIMIT,
 )
     V = nv(g)
@@ -155,15 +155,9 @@ function mixed_strategies_colgen(
     attackset = Attacks[randvec(V, K″)]
 
     update_master() = begin
-        res = mixed_strategies_master(
-            g, placementset, attackset; optim
-        )
+        res = mixed_strategies_master(g, placementset, attackset; optim)
         @assert res != :infeasible "Master problem is infeasible"
-        (
-            obj = res.objective,
-            p_star = res.p_star,
-            q_star = res.q_star,
-        )
+        (obj = res.objective, p_star = res.p_star, q_star = res.q_star)
     end
 
     has_changed = true
@@ -184,13 +178,9 @@ function mixed_strategies_colgen(
         # Step 1
         # Sovle the placement generation problem to get
         # placement s′
-        placement_config = PlacementConfig(
-            placement_config.M,
-            attackset,
-            p_star,
-        )
+        placement_config = PlacementConfig(placement_config.M, attackset, p_star)
         p_res = mixed_strategies_pricing_placement(
-            g, 
+            g,
             placement_config;
             controller_constraints,
             delay_constraints,
@@ -198,11 +188,11 @@ function mixed_strategies_colgen(
             optim,
         )
 
-        s′ = p_res.s 
+        s′ = p_res.s
         push!(placement_times, p_res.time)
         push!(x_stars, obj)
 
-        if [length(surviving_nodes(g, s′, a)) for a in attackset] ⋅ p_star > obj 
+        if [length(surviving_nodes(g, s′, a)) for a in attackset] ⋅ p_star > obj
             if !(s′ in placementset)
                 # We found a better placement.
                 push!(placementset, s′)
@@ -215,15 +205,13 @@ function mixed_strategies_colgen(
 
         # Generate a new attack.
         attack_config = AttackConfig(attack_config.K, placementset, q_star)
-        a_res = mixed_strategies_pricing_attack(
-            g, attack_config; cost_config,
-        )
+        a_res = mixed_strategies_pricing_attack(g, attack_config; cost_config)
 
         a′ = a_res.a # The new attack 
         push!(attack_times, a_res.time)
         push!(y_stars, obj)
 
-        if obj > [length(surviving_nodes(g, s, a′)) for s in placementset] ⋅ q_star 
+        if obj > [length(surviving_nodes(g, s, a′)) for s in placementset] ⋅ q_star
             if !(a′ in attackset)
                 push!(attackset, a′)
                 has_changed = true
