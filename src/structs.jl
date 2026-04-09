@@ -65,11 +65,11 @@ end
     BSC::Float64
     # Distance matrix 
     distance_matrix::Matrix{Float64}
+end
 
-    function DelayConstraintsConfig(g::AbstractGraph, BCC::Float64, BSC::Float64)
-        distance_matrix = get_distance_matrix(g)
-        return DelayConstraintsConfig(BCC, BSC, distance_matrix)
-    end
+function DelayConstraintsConfig(g::AbstractGraph, BCC::Float64, BSC::Float64)
+    distance_matrix = get_distance_matrix(g)
+    return DelayConstraintsConfig(BCC, BSC, distance_matrix)
 end
 
 @with_kw struct CapacityConstraintsConfig

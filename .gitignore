@@ -6,3 +6,6 @@ experiments/
 csvtool/
 *.tikz
 notebooks/
+.venv/
+.ipynb_checkpoints/
+*.tex

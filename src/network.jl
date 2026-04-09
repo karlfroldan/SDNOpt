@@ -241,8 +241,8 @@ function calculate_attack_costs(g::MetaGraph)
 end
 
 # Attacker budget is the ratio of all attack costs 
-function calculate_attacker_budget(costs::Dict{Int,Float64}, α::Float64)
-    return α * sum(values(costs))
+function calculate_attacker_budget(costs::Dict{Int,Float64}, ρ::Float64)
+    return ρ * sum(values(costs))
 end
 
 # Number of arrivals per graph

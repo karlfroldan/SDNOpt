@@ -491,20 +491,26 @@ function generate_heatmap_tikz(
     println(io, "  % --- NODES ---")
     sorted_vertices = sort(collect(vertices(g)))
 
+    base_size = 1.2
+    max_extra_size = 3.0
+
     for v in sorted_vertices
         x = round(locs[v][1], digits = 4)
         y = round(locs[v][2], digits = 4)
 
         tikz_id = "node_$v"
 
-        # Calculate normalized color intensity
+        # Calculate normalized color intensity and size
         prob = get(node_probs, v, 0.0)
 
         if max_prob > 0
             # Scale intensity relative to the maximum probability
             intensity = round(Int, (prob / max_prob) * 100)
+            # Scale size relative to the maximum probability
+            current_size = round(base_size + (prob / max_prob) * max_extra_size, digits=2)
         else
             intensity = 0
+            current_size = base_size
         end
 
         # Mix red with blue
@@ -517,9 +523,9 @@ function generate_heatmap_tikz(
                 [locs[i][1] for i in vertices(g)],
                 [locs[i][2] for i in vertices(g)],
             )
-            node_options = "v_base, fill=$fill_color, label={$label_pos:{$v}}"
+            node_options = "v_base, fill=$fill_color, inner sep=$(current_size)pt, label={$label_pos:{$v}}"
         else
-            node_options = "v_base, fill=$fill_color"
+            node_options = "v_base, fill=$fill_color, inner sep=$(current_size)pt"
         end
 
         println(io, "  \\node[$node_options] ($tikz_id) at ($x, $y) {};")
@@ -548,6 +554,13 @@ function generate_heatmap_tikz(
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, 0) {$max_str};")
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, -2) {$mid_str};")
     println(io, "    \\node[right, font=\\scriptsize] at (0.5, -4) {0.0};")
+    
+    # Legend extensions for size
+    println(io, "    \\node[v_base, fill=red, inner sep=$(base_size + max_extra_size)pt] at (0.25, -5) {};")
+    println(io, "    \\node[right, font=\\scriptsize] at (0.5, -5) {Max Size};")
+    println(io, "    \\node[v_base, fill=blue, inner sep=$(base_size)pt] at (0.25, -6) {};")
+    println(io, "    \\node[right, font=\\scriptsize] at (0.5, -6) {Min Size};")
+    
     println(io, "  \\end{scope}")
 
     println(io, "\n\\end{tikzpicture}")

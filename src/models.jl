@@ -91,6 +91,9 @@ function add_attack_cost_constraints!(m::Model, cost_config::AttackCostConfig)
     R = cost_config.R
     attack_cost = cost_config.cost
 
+    V = length(cost_config.cost)
+    a = m[:a]
+
     @constraint(m, sum(attack_cost[v] * a[v] for v = 1:V) ≤ R)
 end
 
@@ -205,7 +208,7 @@ function add_controllers!(
         @variable(m, r[1:V], Bin)
 
         # Total number of controllers 
-        @constraint(m, sum(s) + sum(r) == m)
+        @constraint(m, sum(s) + sum(r) == M)
 
         # Bounds on the primary and backup controllers.
         @constraint(m, P′ ≤ sum(s) ≤ P″)
@@ -240,9 +243,9 @@ function add_delay_constraints!(
     if !isnothing(capacity_constraints)
         # We use the information about capacity constraints 
         h = m[:h] # h[i, j] = switch i is assigned to controller j
-        @constraint(model, [v in 1:V], sum(h[v, W[v]]) == 1)
+        @constraint(m, [v in 1:V], sum(h[v, W[v]]) == 1)
     else
-        @constraint(model, [v in 1:V], sum(s[W[v]]) ≥ 1)
+        @constraint(m, [v in 1:V], sum(s[W[v]]) ≥ 1)
     end
 end
 
@@ -252,6 +255,7 @@ function add_capacity_constraints!(
     capacity_constraints::CapacityConstraintsConfig,
 )
     V = nv(g)
+    s = m[:s]
 
     # h[i, j] == 1 means that switch i is assigned to controller j.
     @variable(m, h[1:V, 1:V], Bin)
@@ -473,19 +477,21 @@ end
 
 function maximum_sc_delay(
     g::MetaGraph,
-    P::Union{Int,IntBound},
-    dists::Matrix{Float64},
-    BSC::Float64,
-    BCC::Float64;
+    controller_config::ControllerConstraints,
+    delay_constraints::DelayConstraintsConfig;
     tol = 1e-9,
     optim = DEFAULT_OPTIM,
 )
     V = nv(g)
 
+    BCC = delay_constraints.BCC
+    BSC = delay_constraints.BSC
+
     @assert BSC > 0.0
     @assert BCC > 0.0
 
-    P′, P″ = @unpack_bounds(P)
+    P′, P″ = controller_config.P′, controller_config.P″
+    dists = delay_constraints.distance_matrix
 
     m = Model(optim)
     set_silent(m)
@@ -571,12 +577,13 @@ function generate_controller_placement(
     end
 
     add_controllers!(g, m, placement_config; controller_constraints)
-    if !isnothing(delay_constraints)
-        add_delay_constraints!(g, m, delay_constraints; capacity_constraints)
-    end
 
     if !isnothing(capacity_constraints)
         add_capacity_constraints!(g, m, capacity_constraints)
+    end
+
+    if !isnothing(delay_constraints)
+        add_delay_constraints!(g, m, delay_constraints; capacity_constraints)
     end
 
     @objective(m, FEASIBILITY_SENSE, 0)
@@ -656,13 +663,16 @@ function mixed_strategies_pricing_placement(
     end
 
     add_controllers!(g, m, placement_config; controller_constraints)
-    if !isnothing(delay_constraints)
-        add_delay_constraints!(g, m, delay_constraints; capacity_constraints)
-    end
 
     if !isnothing(capacity_constraints)
         add_capacity_constraints!(g, m, capacity_constraints)
     end
+
+    if !isnothing(delay_constraints)
+        add_delay_constraints!(g, m, delay_constraints; capacity_constraints)
+    end
+
+    
 
     add_survivability_constraints!(g, m, placement_config; controller_constraints)
 
