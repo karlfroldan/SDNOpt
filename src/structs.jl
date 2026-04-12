@@ -84,3 +84,79 @@ end
     R::Float64 # Total attacker's budget.
     cost::Dict{Int,Float64}
 end
+
+struct MasterResult
+    # Defender probability distribution
+    q_star::Vector{Float64}
+    # Attacker probability distribution
+    p_star::Vector{Float64}
+end
+
+"""
+The results of the pricing problem.
+"""
+mutable struct SubResult{T}
+    time::Float64
+    objective_value::Float64
+    results::T
+    # Whether this is added to the final list of generated controller
+    # or attack placements.
+end
+
+function Base.show(io::IO, obj::SubResult{T}) where {T<:Any}
+    res = obj.results
+    obj_val = obj.objective_value
+    time = obj.time
+
+    print(io, "Found: $res with objective value $obj_val with time $time")
+end
+
+function Base.show(io::IO, obj::SubResult{MasterResult})
+    obj_val = obj.objective_value
+    time = obj.time
+
+    print(io, "Expected Payoff: $obj_val with time $time")
+end
+
+struct MixedStrategyResult
+    master::Vector{SubResult{MasterResult}}
+    placement::Vector{SubResult{Placements}}
+    attack::Vector{SubResult{Attacks}}
+
+    final_placements::Vector{Placements}
+    final_attacks::Vector{Attacks}
+end
+
+function solver_time(res::MixedStrategyResult, problem::Symbol)
+    map(x -> x.time, getproperty(res, problem))
+end
+
+"""
+Primal solution objective function. (Placement)
+"""
+function xstars(res::MixedStrategyResult)
+    [res.master[2i-1].objective_value for i = 1:length(res.placement)]
+end
+
+"""
+Dual solution objective function. (Attacker)
+"""
+function ystars(res::MixedStrategyResult)
+    [res.master[2i].objective_value for i = 1:length(res.attack)]
+end
+
+function Base.show(io::IO, obj::MixedStrategyResult)
+    n_placements = length(obj.final_placements)
+    n_attacks = length(obj.final_attacks)
+
+    master_time = sum(solver_time(obj, :master))
+    placement_time = sum(solver_time(obj, :placement))
+    attack_time = sum(solver_time(obj, :attack))
+
+    println(io, "--- Solved and feasible ---")
+    println(io, "n_placements: $n_placements")
+    println(io, "n_attacks: $n_attacks")
+    println(io, "time to solve master: $master_time")
+    println(io, "time to generate placements: $placement_time")
+    println(io, "time to generate attacks: $attack_time")
+end

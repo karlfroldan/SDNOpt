@@ -36,30 +36,31 @@ function mixed_strategies_colgen(
     attackset = Attacks[randvec(V, K″)]
 
     update_master() = begin
-        res = mixed_strategies_master(g, placementset, attackset; optim)
-        @assert res != :infeasible "Master problem is infeasible"
-        (obj = res.objective, p_star = res.p_star, q_star = res.q_star)
+        mixed_strategies_master(g, placementset, attackset; optim)
     end
 
     has_changed = true
-    obj, p_star, q_star = update_master()
 
-    # Primal solution (controller's master problem)
-    x_stars = Float64[]
-    # Dual solution (attacker's master problem)
-    y_stars = Float64[]
-
-    # We also store the timestamps.
-    master_times = Float64[]
-    placement_times = Float64[]
-    attack_times = Float64[]
+    # # Primal solution (controller's master problem)
+    # x_stars = Float64[]
+    # # Dual solution (attacker's master problem)
+    # y_stars = Float64[]
+    placement_results = SubResult{Placements}[]
+    attack_results = SubResult{Attacks}[]
+    master_results = SubResult{MasterResult}[]
 
     while has_changed
         has_changed = false
+        master_res = update_master()
+        p_star = master_res.results.p_star
+        q_star = master_res.results.q_star
+        obj = master_res.objective_value
         # Step 1
         # Sovle the placement generation problem to get
         # placement s′
-        placement_config = PlacementConfig(placement_config.M, attackset, p_star)
+        placement_config =
+            PlacementConfig(placement_config.M, attackset, master_res.results.p_star)
+
         p_res = mixed_strategies_pricing_placement(
             g,
             placement_config;
@@ -69,10 +70,7 @@ function mixed_strategies_colgen(
             optim,
         )
 
-        s′ = p_res.s
-        push!(placement_times, p_res.time)
-        push!(x_stars, obj)
-
+        s′ = p_res.results
         if [length(surviving_nodes(g, s′, a)) for a in attackset] ⋅ p_star > obj
             if !(s′ in placementset)
                 # We found a better placement.
@@ -81,17 +79,21 @@ function mixed_strategies_colgen(
             end
         end
 
+        push!(placement_results, p_res)
+
         # Step 2, solve the attack generation problem 
-        obj, p_star, q_star = update_master()
+        # obj, p_star, q_star, mt1 = update_master()
+        master_res = update_master()
+        push!(master_results, master_res)
+        obj = master_res.objective_value
+        p_star = master_res.results.p_star
+        q_star = master_res.results.q_star
 
         # Generate a new attack.
         attack_config = AttackConfig(attack_config.K, placementset, q_star)
         a_res = mixed_strategies_pricing_attack(g, attack_config; cost_config)
 
-        a′ = a_res.a # The new attack 
-        push!(attack_times, a_res.time)
-        push!(y_stars, obj)
-
+        a′ = a_res.results # The new attack 
         if obj > [length(surviving_nodes(g, s, a′)) for s in placementset] ⋅ q_star
             if !(a′ in attackset)
                 push!(attackset, a′)
@@ -99,20 +101,20 @@ function mixed_strategies_colgen(
             end
         end
 
-        obj, p_star, q_star = update_master()
+        push!(attack_results, a_res)
+
+        master_res = update_master()
+        push!(master_results, master_res)
+        p_star = master_res.results.p_star
+        q_star = master_res.results.q_star
+        obj = master_res.objective_value
     end
 
-    (;
-        attackset,
+    MixedStrategyResult(
+        master_results,
+        placement_results,
+        attack_results,
         placementset,
-        p_star,
-        q_star,
-        placement_times,
-        attack_times,
-        objective = obj,
-
-        # Objective value for statistics 
-        x_stars = x_stars,
-        y_stars = y_stars,
+        attackset,
     )
 end

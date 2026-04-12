@@ -456,7 +456,7 @@ function mixed_strategies_master(
     placementset::Vector{Placements},
     attackset::Vector{Attacks};
     optim = DEFAULT_OPTIM,
-)
+)::SubResult{MasterResult}
     m = Model(optim)
     set_silent(m)
 
@@ -484,13 +484,9 @@ function mixed_strategies_master(
 
     raw_duals = [dual(con[i]) for i = 1:asize]
 
-    (
-        time = time_taken,
-        model = m,
-        objective = objective_value(m),
-        q_star = safe_probs(value.(q)),
-        p_star = safe_probs(abs.(raw_duals)),
-    )
+    master_result = MasterResult(safe_probs(value.(q)), safe_probs(abs.(raw_duals)))
+
+    SubResult{MasterResult}(time_taken, objective_value(m), master_result)
 end
 
 function mixed_strategies_pricing_placement(
@@ -501,7 +497,7 @@ function mixed_strategies_pricing_placement(
     capacity_constraints::Union{CapacityConstraintsConfig,Nothing} = nothing,
     optim = DEFAULT_OPTIM,
     time_limit::Union{Nothing,Float64} = nothing,
-)
+)::SubResult{Placements}
     @smart_assert length(placement_config.attacks) == length(placement_config.p)
 
     m = Model(optim)
@@ -522,8 +518,6 @@ function mixed_strategies_pricing_placement(
         add_delay_constraints!(g, m, delay_constraints; capacity_constraints)
     end
 
-
-
     add_survivability_constraints!(g, m, placement_config; controller_constraints)
 
     Y = m[:Y]
@@ -535,7 +529,7 @@ function mixed_strategies_pricing_placement(
     placements =
         get_controller_placements(m; with_backups = !isnothing(controller_constraints))
 
-    (time = time_taken, objective = objective_value(m), model = m, s = placements)
+    SubResult{Placements}(time_taken, objective_value(m), placements)
 end
 
 function mixed_strategies_pricing_attack(
@@ -544,7 +538,7 @@ function mixed_strategies_pricing_attack(
     cost_config::Union{AttackCostConfig,Nothing} = nothing,
     optim = DEFAULT_OPTIM,
     tol::Float64 = 1e-9,
-)
+)::SubResult{Attacks}
     @smart_assert length(attack_config.placements) == length(attack_config.q)
 
     placementset = attack_config.placements
@@ -574,5 +568,6 @@ function mixed_strategies_pricing_attack(
     @objective(m, Min, q′ ⋅ F)
 
     time_taken = @solve_problem!(m)
-    (time = time_taken, objective = objective_value(m), model = m, a = to_indices(a))
+
+    SubResult{Attacks}(time_taken, objective_value(m), to_indices(a))
 end
