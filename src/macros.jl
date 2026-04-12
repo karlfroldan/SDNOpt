@@ -23,9 +23,17 @@ macro solve_problem!(m)
             throw(InfeasibleError("Optimization failed: Model is infeasible."))
 
         elseif status == MOI.TIME_LIMIT
-            throw(TimeLimitError("Optimization failed: Solver reached the time limit."))
+            throw(
+                TimeLimitError(
+                    "Optimization failed: Solver reached the time limit.",
+                ),
+            )
         elseif !is_solved_and_feasible(model)
-            throw(SolverError("Optimization failed: Model is unsolved. Status: $status"))
+            throw(
+                SolverError(
+                    "Optimization failed: Model is unsolved. Status: $status",
+                ),
+            )
         end
 
         # Return solving time

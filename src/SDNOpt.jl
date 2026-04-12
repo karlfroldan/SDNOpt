@@ -62,7 +62,9 @@ DEFAULT_OPTIM = CPLEX.Optimizer
 struct InfeasibleError <: Exception
     msg::String
 end
-Base.showerror(io::IO, e::InfeasibleError) = print(io, "InfeasibleError: ", e.msg)
+function Base.showerror(io::IO, e::InfeasibleError)
+    return print(io, "InfeasibleError: ", e.msg)
+end
 
 struct TimeLimitError <: Exception
     msg::String

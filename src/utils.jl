@@ -16,11 +16,11 @@ function safe_probs(p::AbstractArray; tol::Float64 = 1e-10)
 
     # Normalize
     total_mass = sum(v)
-    v ./ total_mass
+    return v ./ total_mass
 end
 
 function μs2s(ms)
-    ms / 1e6
+    return ms / 1e6
 end
 
 function randvec(k::Int, n::Int)
@@ -32,9 +32,9 @@ function randvec(k::Int, n::Int)
 end
 
 function to_indices(controller_variable)
-    findall(Int.(round.(value.(controller_variable))) .== 1)
+    return findall(Int.(round.(value.(controller_variable))) .== 1)
 end
 
 function all_controllers(p::Placements)
-    union(p.pc, p.bc)
+    return union(p.pc, p.bc)
 end

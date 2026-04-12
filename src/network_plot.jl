@@ -1,5 +1,9 @@
 
-function get_active_nodes(g::MetaGraph, controllers::Vector{Int}, attacks::Vector{Int})
+function get_active_nodes(
+    g::MetaGraph,
+    controllers::Vector{Int},
+    attacks::Vector{Int},
+)
     attack_set = Set(attacks)
     controller_set = Set(controllers)
     active_nodes = Set{Int}()
@@ -16,7 +20,11 @@ function get_active_nodes(g::MetaGraph, controllers::Vector{Int}, attacks::Vecto
 
     return active_nodes
 end
-function get_active_components(g::MetaGraph, controllers::Vector{Int}, attacks::Vector{Int})
+function get_active_components(
+    g::MetaGraph,
+    controllers::Vector{Int},
+    attacks::Vector{Int},
+)
     attack_set = Set(attacks)
     controller_set = Set(controllers)
     active_components = Vector{Set{Int}}()
@@ -82,7 +90,8 @@ function determine_network_styles(
 
     for v in vertices(g)
         if v in attack_set
-            n_colors[v] = plot_color(v in controller_set ? :lightblue : inactive_color)
+            n_colors[v] =
+                plot_color(v in controller_set ? :lightblue : inactive_color)
             n_shapes[v] = :rect
             n_strokes[v] = plot_color(:red)
         elseif haskey(node_to_comp, v)
@@ -129,7 +138,7 @@ function add_network_legend!(p, markercolor, markerstrokecolor, inactive_color)
     scatter!(
         p,
         [NaN],
-        [NaN],
+        [NaN];
         label = "Low Load (Controller)",
         markercolor = :lightblue,
         markershape = :hexagon,
@@ -139,7 +148,7 @@ function add_network_legend!(p, markercolor, markerstrokecolor, inactive_color)
     scatter!(
         p,
         [NaN],
-        [NaN],
+        [NaN];
         label = "High Load (Controller)",
         markercolor = :darkblue,
         markershape = :hexagon,
@@ -150,7 +159,7 @@ function add_network_legend!(p, markercolor, markerstrokecolor, inactive_color)
     scatter!(
         p,
         [NaN],
-        [NaN],
+        [NaN];
         label = "Active Switch",
         markercolor = markercolor,
         markershape = :circle,
@@ -160,7 +169,7 @@ function add_network_legend!(p, markercolor, markerstrokecolor, inactive_color)
     scatter!(
         p,
         [NaN],
-        [NaN],
+        [NaN];
         label = "Attack Node",
         markercolor = inactive_color,
         markershape = :rect,
@@ -170,17 +179,17 @@ function add_network_legend!(p, markercolor, markerstrokecolor, inactive_color)
     scatter!(
         p,
         [NaN],
-        [NaN],
+        [NaN];
         label = "Inactive Node",
         markercolor = inactive_color,
         markershape = :circle,
         markerstrokecolor = inactive_color,
         framestyle = :none,
     )
-    scatter!(
+    return scatter!(
         p,
         [NaN],
-        [NaN],
+        [NaN];
         label = "Attacked Controller",
         markercolor = :lightblue,
         markershape = :rect,
@@ -189,7 +198,14 @@ function add_network_legend!(p, markercolor, markerstrokecolor, inactive_color)
     )
 end
 
-function add_network_labels!(p, g::MetaGraph, locs, x_coords, y_coords, fontsize)
+function add_network_labels!(
+    p,
+    g::MetaGraph,
+    locs,
+    x_coords,
+    y_coords,
+    fontsize,
+)
     y_spread = maximum(y_coords) - minimum(y_coords)
     offset = y_spread * 0.02
 
@@ -204,7 +220,12 @@ function add_network_labels!(p, g::MetaGraph, locs, x_coords, y_coords, fontsize
             valign = :bottom
         end
 
-        annotate!(p, x_coords[i], lbl_y, text(locs[i][3], fontsize, :center, valign))
+        annotate!(
+            p,
+            x_coords[i],
+            lbl_y,
+            text(locs[i][3], fontsize, :center, valign),
+        )
     end
 end
 
@@ -239,7 +260,7 @@ function calculate_tikz_label_position(
         max_gap = 0.0
 
         n_angles = length(angles)
-        for i = 1:n_angles
+        for i in 1:n_angles
             θ1 = angles[i]
             # Wrap around for the last angle
             θ2 = i == n_angles ? angles[1] + 2π : angles[i+1]
@@ -283,7 +304,7 @@ function calculate_node_probabilities(
         end
     end
 
-    node_probs
+    return node_probs
 end
 
 function generate_tikz(
@@ -354,7 +375,10 @@ function generate_tikz(
 
     println(io, "  % --- STYLES ---")
     println(io, "  \\tikzset{")
-    println(io, "    every label/.append style={font=\\scriptsize, label distance=-1pt},")
+    println(
+        io,
+        "    every label/.append style={font=\\scriptsize, label distance=-1pt},",
+    )
     println(io, "    v/.style = {circle, fill=black, inner sep=1.2pt},")
     println(io, "    v_pc/.style = {circle, fill=cyan, inner sep=1.2pt},")
     println(io, "    v_bc/.style = {circle, fill=olive, inner sep=1,2pt},")
@@ -372,8 +396,8 @@ function generate_tikz(
     sorted_vertices = sort(collect(vertices(g)))
 
     for v in sorted_vertices
-        x = round(locs[v][1], digits = 4)
-        y = round(locs[v][2], digits = 4)
+        x = round(locs[v][1]; digits = 4)
+        y = round(locs[v][2]; digits = 4)
 
         tikz_id = "node_$v"
 
@@ -428,7 +452,7 @@ function generate_tikz(
 
     if !isnothing(save_path)
         open(save_path, "w") do f
-            write(f, latex_str)
+            return write(f, latex_str)
         end
     end
 
@@ -483,8 +507,14 @@ function generate_heatmap_tikz(
 
     println(io, "  % --- STYLES ---")
     println(io, "  \\tikzset{")
-    println(io, "    every label/.append style={font=\\scriptsize, label distance=-1pt},")
-    println(io, "    v_base/.style = {circle, draw=black, thin, inner sep=1.2pt},")
+    println(
+        io,
+        "    every label/.append style={font=\\scriptsize, label distance=-1pt},",
+    )
+    println(
+        io,
+        "    v_base/.style = {circle, draw=black, thin, inner sep=1.2pt},",
+    )
     println(io, "    e/.style = {-, thin, black}")
     println(io, "  }\n")
 
@@ -495,8 +525,8 @@ function generate_heatmap_tikz(
     max_extra_size = 3.0
 
     for v in sorted_vertices
-        x = round(locs[v][1], digits = 4)
-        y = round(locs[v][2], digits = 4)
+        x = round(locs[v][1]; digits = 4)
+        y = round(locs[v][2]; digits = 4)
 
         tikz_id = "node_$v"
 
@@ -507,7 +537,10 @@ function generate_heatmap_tikz(
             # Scale intensity relative to the maximum probability
             intensity = round(Int, (prob / max_prob) * 100)
             # Scale size relative to the maximum probability
-            current_size = round(base_size + (prob / max_prob) * max_extra_size, digits = 2)
+            current_size = round(
+                base_size + (prob / max_prob) * max_extra_size;
+                digits = 2,
+            )
         else
             intensity = 0
             current_size = base_size
@@ -538,8 +571,8 @@ function generate_heatmap_tikz(
     end
 
     println(io, "\n  % --- LEGEND ---")
-    max_str = round(max_prob, digits = 3)
-    mid_str = round(max_prob / 2, digits = 3)
+    max_str = round(max_prob; digits = 3)
+    mid_str = round(max_prob / 2; digits = 3)
 
     # Use current bounding box to shift the legend safely outside the network
     println(
@@ -550,7 +583,10 @@ function generate_heatmap_tikz(
         io,
         "    \\node[right, font=\\scriptsize, yshift=0.3cm] at (0, 0) {Probability};",
     )
-    println(io, "    \\shade[top color=red, bottom color=blue] (0, 0) rectangle (0.5, -4);")
+    println(
+        io,
+        "    \\shade[top color=red, bottom color=blue] (0, 0) rectangle (0.5, -4);",
+    )
     println(io, "    \\node[right, font=\\scriptsize] at (0.8, 0) {$max_str};")
     println(io, "    \\node[right, font=\\scriptsize] at (0.8, -2) {$mid_str};")
     println(io, "    \\node[right, font=\\scriptsize] at (0.8, -4) {0.0};")
@@ -575,7 +611,7 @@ function generate_heatmap_tikz(
 
     if !isnothing(save_path)
         open(save_path, "w") do f
-            write(f, latex_str)
+            return write(f, latex_str)
         end
     end
 

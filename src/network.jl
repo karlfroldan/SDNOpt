@@ -17,12 +17,12 @@ load_cost266() = load_network("networks/cost266.dat")
 
 # Codes - Internal integer representation for the graph
 function codes_to_labels(g::MetaGraph, codes::Vector{Int})
-    [label_for(g, c) for c in codes]
+    return [label_for(g, c) for c in codes]
 end
 
 # Labels are the way we index the graph
 function labels_to_codes(g::MetaGraph, node_labels)
-    [code_for(g, l) for l in node_labels]
+    return [code_for(g, l) for l in node_labels]
 end
 
 function load_network(filename::AbstractString)
@@ -81,7 +81,7 @@ function load_network(filename::AbstractString)
         mg[e.link_a, e.link_b] = 1.0 # e.length
     end
 
-    mg
+    return mg
 end
 
 """
@@ -94,7 +94,7 @@ function attack_graph(g::MetaGraph, attacked_labels::AbstractArray{Int})
     all_indices = vertices(g)
     surviving_indices = setdiff(all_indices, attacked_indices)
     new_g, _ = induced_subgraph(g, collect(surviving_indices))
-    new_g
+    return new_g
 end
 
 function plot_network(g::MetaGraph; title = nothing)
@@ -104,8 +104,8 @@ function plot_network(g::MetaGraph; title = nothing)
     y_coords = [loc[2] for loc in locs]
     node_labels = [loc[3] for loc in locs]
 
-    graphplot(
-        g,
+    return graphplot(
+        g;
         x = x_coords,
         y = y_coords,
         names = node_labels,
@@ -127,7 +127,7 @@ Collect the connected components of a graph into a list of graphs.
 """
 function components(g::MetaGraph)
     component_indices = connected_components(g)
-    [first(induced_subgraph(g, idx)) for idx in component_indices]
+    return [first(induced_subgraph(g, idx)) for idx in component_indices]
 end
 
 """
@@ -137,7 +137,7 @@ Given some node `v`, return the edges incident to think node.
 """
 function incident_edges(g::MetaGraph, v::Int)
     v_idx = code_for(g, v)
-    [e for e in edges(g) if e.src == v_idx || e.dst == v_idx]
+    return [e for e in edges(g) if e.src == v_idx || e.dst == v_idx]
 end
 
 """
@@ -149,7 +149,7 @@ function get_distance_matrix(g::AbstractGraph)
     V = nv(g)
     dists = fill(Inf, V, V)
 
-    for i = 1:V
+    for i in 1:V
         algo_result = dijkstra_shortest_paths(g, i)
         dists[i, :] = algo_result.dists
     end
@@ -161,12 +161,12 @@ function surviving_nodes(g::AbstractGraph, s::Vector{Int}, a::Attacks)
     # Return the surviving nodes (not components) given an attack 
     ag = attack_graph(g, a)
 
-    Iterators.flatten([
-        collect(labels(c)) for
-        c in components(ag) if !isdisjoint([code_for(g, l) for l in labels(c)], s)
-    ]) |>
-    collect |>
-    sort
+    return Iterators.flatten([
+               collect(labels(c)) for c in components(ag) if
+               !isdisjoint([code_for(g, l) for l in labels(c)], s)
+           ]) |>
+           collect |>
+           sort
 end
 
 function surviving_nodes(
@@ -179,12 +179,12 @@ function surviving_nodes(
 
     # Join the two controllers!
     cs = union(ps, bs)
-    Iterators.flatten([
-        collect(labels(c)) for
-        c in components(ag) if !isdisjoint([code_for(g, l) for l in labels(c)], cs)
-    ]) |>
-    collect |>
-    sort
+    return Iterators.flatten([
+               collect(labels(c)) for c in components(ag) if
+               !isdisjoint([code_for(g, l) for l in labels(c)], cs)
+           ]) |>
+           collect |>
+           sort
 end
 
 function strings_to_indices(g::MetaGraph, str_labels::Vector{String})
@@ -193,7 +193,7 @@ function strings_to_indices(g::MetaGraph, str_labels::Vector{String})
 end
 
 function surviving_nodes(g::AbstractGraph, ps::Placements, a::Attacks)
-    surviving_nodes(g, ps.pc, ps.bc, a)
+    return surviving_nodes(g, ps.pc, ps.bc, a)
 end
 
 function shortest_path_tree(g::MetaGraph, root::Int)
@@ -224,9 +224,8 @@ function shortest_path_tree(g::MetaGraph, root::Int)
             tree[w_label, v_label] = weight
         end
     end
-    tree
+    return tree
 end
-
 
 #### Experiments helpers
 
@@ -236,7 +235,7 @@ function calculate_attack_costs(g::MetaGraph)
     # Calculate the betweenness centrality for all vertices
     bc = betweenness_centrality(g)
 
-    for v = 1:nv(g)
+    for v in 1:nv(g)
         costs[v] = Float64(bc[v])
     end
     return costs
@@ -250,7 +249,7 @@ end
 # Number of arrivals per graph
 function calculate_arrivals(g::MetaGraph; multiplier::Float64 = 10.0)
     λ = Dict{Int,Float64}()
-    for v = 1:nv(g)
+    for v in 1:nv(g)
         λ[v] = multiplier * degree(g, v)
     end
     return λ
@@ -266,7 +265,7 @@ end
 # capacity using `calculate_uniform_capacity`)
 function calculate_capacity_dict(g::MetaGraph, capacity_value::Float64)
     C_dict = Dict{Int,Float64}()
-    for v = 1:nv(g)
+    for v in 1:nv(g)
         C_dict[v] = capacity_value
     end
     return C_dict

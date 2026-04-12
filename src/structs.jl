@@ -108,14 +108,17 @@ function Base.show(io::IO, obj::SubResult{T}) where {T<:Any}
     obj_val = obj.objective_value
     time = obj.time
 
-    print(io, "Found: $res with objective value $obj_val with time $time")
+    return print(
+        io,
+        "Found: $res with objective value $obj_val with time $time",
+    )
 end
 
 function Base.show(io::IO, obj::SubResult{MasterResult})
     obj_val = obj.objective_value
     time = obj.time
 
-    print(io, "Expected Payoff: $obj_val with time $time")
+    return print(io, "Expected Payoff: $obj_val with time $time")
 end
 
 struct MixedStrategyResult
@@ -128,21 +131,21 @@ struct MixedStrategyResult
 end
 
 function solver_time(res::MixedStrategyResult, problem::Symbol)
-    map(x -> x.time, getproperty(res, problem))
+    return map(x -> x.time, getproperty(res, problem))
 end
 
 """
 Primal solution objective function. (Placement)
 """
 function xstars(res::MixedStrategyResult)
-    [res.master[2i-1].objective_value for i = 1:length(res.placement)]
+    return [res.master[2i-1].objective_value for i in 1:length(res.placement)]
 end
 
 """
 Dual solution objective function. (Attacker)
 """
 function ystars(res::MixedStrategyResult)
-    [res.master[2i].objective_value for i = 1:length(res.attack)]
+    return [res.master[2i].objective_value for i in 1:length(res.attack)]
 end
 
 function Base.show(io::IO, obj::MixedStrategyResult)
@@ -158,5 +161,5 @@ function Base.show(io::IO, obj::MixedStrategyResult)
     println(io, "n_attacks: $n_attacks")
     println(io, "time to solve master: $master_time")
     println(io, "time to generate placements: $placement_time")
-    println(io, "time to generate attacks: $attack_time")
+    return println(io, "time to generate attacks: $attack_time")
 end

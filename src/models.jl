@@ -24,7 +24,11 @@ end
 Add a constraint that bounds the number of attacks done on the network.
 Introduces the variable `a[1:V]`.
 """
-function add_attack_constraint!(g::MetaGraph, m::Model, attack_config::AttackConfig)
+function add_attack_constraint!(
+    g::MetaGraph,
+    m::Model,
+    attack_config::AttackConfig,
+)
     V = nv(g)
 
     K = attack_config.K
@@ -90,7 +94,7 @@ function add_attack_cost_constraints!(m::Model, cost_config::AttackCostConfig)
     V = length(cost_config.cost)
     a = m[:a]
 
-    @constraint(m, sum(attack_cost[v] * a[v] for v = 1:V) ≤ R)
+    @constraint(m, sum(attack_cost[v] * a[v] for v in 1:V) ≤ R)
 end
 
 # Placements with one variable 
@@ -106,7 +110,8 @@ function add_uniqueness_constraint!(
         not_Tp = setdiff(1:V, Tp)
         @constraint(
             m,
-            sum(vp[v] for v in Tp) - sum(vp[v] for v in not_Tp) ≤ length(Tp) - diff
+            sum(vp[v] for v in Tp) - sum(vp[v] for v in not_Tp) ≤
+            length(Tp) - diff
         )
     end
 end
@@ -128,8 +133,9 @@ function add_uniqueness_constraint!(
 
         @constraint(
             m,
-            sum(vp[v] for v in Tp) - sum(vp[v] for v in not_Tp) + sum(vb[v] for v in Tb) -
-            sum(vb[v] for v in not_Tb) ≤ length(Tp) + length(Tb) - diff
+            sum(vp[v] for v in Tp) - sum(vp[v] for v in not_Tp) +
+            sum(vb[v] for v in Tb) - sum(vb[v] for v in not_Tb) ≤
+            length(Tp) + length(Tb) - diff
         )
     end
 end
@@ -157,12 +163,11 @@ macro uniqueness_constraints(m, V, history, diff, vars...)
     end
 end
 
-
 function get_U(BCC::Float64, dists::Matrix{Float64}; tol = 1e-9)
     V, _ = size(dists)
-    [
-        (v, w) for
-        (v, w) in Base.Iterators.product(1:V, 1:V) if v ≤ w && dists[v, w] > BCC - tol
+    return [
+        (v, w) for (v, w) in Base.Iterators.product(1:V, 1:V) if
+        v ≤ w && dists[v, w] > BCC - tol
     ]
 end
 
@@ -170,14 +175,14 @@ function get_Wv(BSC::Float64, dists::Matrix{Float64}; tol = 1e-9)
     V, _ = size(dists)
     W = Dict{Int,Vector{Int}}()
 
-    for v = 1:V
-        vicinity = [w for w = 1:V if dists[v, w] ≤ BSC + tol] # && v ≤ w]
+    for v in 1:V
+        vicinity = [w for w in 1:V if dists[v, w] ≤ BSC + tol] # && v ≤ w]
         if !isempty(vicinity)
             W[v] = vicinity
         end
     end
 
-    W
+    return W
 end
 
 function add_controllers!(
@@ -259,9 +264,9 @@ function add_capacity_constraints!(
 
     arrivals = capacity_constraints.arrivals
     controller_capacity = capacity_constraints.controller_capacity
-    λ = [arrivals[v] for v = 1:V]
-    cc = [controller_capacity[v] for v = 1:V]
-    for w = 1:V
+    λ = [arrivals[v] for v in 1:V]
+    cc = [controller_capacity[v] for v in 1:V]
+    for w in 1:V
         @constraint(m, λ ⋅ h[:, w] ≤ cc[w] * s[w])
     end
 
@@ -285,7 +290,8 @@ function add_survivability_constraints!(
     @variable(m, Y[1:alen] >= 0, Int)
 
     C_sets = Dict(
-        a => components(attack_graph(g, attack)) for (a, attack) in enumerate(attackset)
+        a => components(attack_graph(g, attack)) for
+        (a, attack) in enumerate(attackset)
     )
 
     # Component Survivability variable 
@@ -297,7 +303,7 @@ function add_survivability_constraints!(
 
     # Component c survives if there is another controller in the 
     # given component.
-    for a = 1:alen
+    for a in 1:alen
         for (c, comp) in enumerate(C_sets[a])
             vs = collect(labels(comp))
             if isnothing(controller_constraints)
@@ -381,7 +387,11 @@ function maximum_sc_delay(
     @constraint(m, [v in keys(Wv); v in Wv[v]], z[v, v] == s[v])
 
     # A1g
-    @constraint(m, [v in keys(Wv)], D ≥ sum(dists[v, w] * z[v, w] for w in Wv[v]))
+    @constraint(
+        m,
+        [v in keys(Wv)],
+        D ≥ sum(dists[v, w] * z[v, w] for w in Wv[v])
+    )
 
     @solve_problem!(m)
 
@@ -439,16 +449,16 @@ function generate_controller_placement(
 
     time_taken = @solve_problem!(m)
 
-    placement =
-        get_controller_placements(m; with_backups = !isnothing(controller_constraints))
-    (controllers = placement, time = time_taken, model = m)
+    placement = get_controller_placements(
+        m;
+        with_backups = !isnothing(controller_constraints),
+    )
+    return (controllers = placement, time = time_taken, model = m)
 end
-
 
 ### Paper:
 ### Finding Optimal Mixed-Strategies in a Matrix Game
 ### Between the Attacker and the Network Operator
-
 
 ## Master Problem 
 function mixed_strategies_master(
@@ -473,20 +483,30 @@ function mixed_strategies_master(
 
     # (22c)
     V_mat = zeros(Int, asize, psize)
-    for i = 1:asize
-        for j = 1:psize
-            V_mat[i, j] = length(surviving_nodes(g, placementset[j], attackset[i]))
+    for i in 1:asize
+        for j in 1:psize
+            V_mat[i, j] =
+                length(surviving_nodes(g, placementset[j], attackset[i]))
         end
     end
 
-    @constraint(m, con[i = 1:asize], y ≤ sum(V_mat[i, j] * q[j] for j = 1:psize))
+    @constraint(
+        m,
+        con[i = 1:asize],
+        y ≤ sum(V_mat[i, j] * q[j] for j in 1:psize)
+    )
     time_taken = @solve_problem!(m)
 
-    raw_duals = [dual(con[i]) for i = 1:asize]
+    raw_duals = [dual(con[i]) for i in 1:asize]
 
-    master_result = MasterResult(safe_probs(value.(q)), safe_probs(abs.(raw_duals)))
+    master_result =
+        MasterResult(safe_probs(value.(q)), safe_probs(abs.(raw_duals)))
 
-    SubResult{MasterResult}(time_taken, objective_value(m), master_result)
+    return SubResult{MasterResult}(
+        time_taken,
+        objective_value(m),
+        master_result,
+    )
 end
 
 function mixed_strategies_pricing_placement(
@@ -518,7 +538,12 @@ function mixed_strategies_pricing_placement(
         add_delay_constraints!(g, m, delay_constraints; capacity_constraints)
     end
 
-    add_survivability_constraints!(g, m, placement_config; controller_constraints)
+    add_survivability_constraints!(
+        g,
+        m,
+        placement_config;
+        controller_constraints,
+    )
 
     Y = m[:Y]
     # Maximize the number of surviving controllers (weighted by probability)
@@ -526,10 +551,12 @@ function mixed_strategies_pricing_placement(
 
     time_taken = @solve_problem!(m)
 
-    placements =
-        get_controller_placements(m; with_backups = !isnothing(controller_constraints))
+    placements = get_controller_placements(
+        m;
+        with_backups = !isnothing(controller_constraints),
+    )
 
-    SubResult{Placements}(time_taken, objective_value(m), placements)
+    return SubResult{Placements}(time_taken, objective_value(m), placements)
 end
 
 function mixed_strategies_pricing_attack(
@@ -569,5 +596,5 @@ function mixed_strategies_pricing_attack(
 
     time_taken = @solve_problem!(m)
 
-    SubResult{Attacks}(time_taken, objective_value(m), to_indices(a))
+    return SubResult{Attacks}(time_taken, objective_value(m), to_indices(a))
 end

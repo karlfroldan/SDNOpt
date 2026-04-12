@@ -1,12 +1,15 @@
 const TIME_LIMIT = 2.0 * 60.0 * 60.0 # 2 Hours
 
-function get_placement(placementlist::Vector{Vector{Int}}, mixed_strategy::Vector{Float64})
+function get_placement(
+    placementlist::Vector{Vector{Int}},
+    mixed_strategy::Vector{Float64},
+)
     @assert sum(mixed_strategy) ≈ 1.0 "Not a mixed Strategy!"
     @assert length(placementlist) == length(mixed_strategy) "Distribution does not equal the target set"
 
     dist = Categorical(mixed_strategy)
     idx = rand(dist)
-    placementlist[idx]
+    return placementlist[idx]
 end
 
 function mixed_strategies_colgen(
@@ -35,7 +38,7 @@ function mixed_strategies_colgen(
     placementset = Placements[res.controllers]
     attackset = Attacks[randvec(V, K″)]
 
-    update_master() = begin
+    function update_master()
         mixed_strategies_master(g, placementset, attackset; optim)
     end
 
@@ -58,8 +61,11 @@ function mixed_strategies_colgen(
         # Step 1
         # Sovle the placement generation problem to get
         # placement s′
-        placement_config =
-            PlacementConfig(placement_config.M, attackset, master_res.results.p_star)
+        placement_config = PlacementConfig(
+            placement_config.M,
+            attackset,
+            master_res.results.p_star,
+        )
 
         p_res = mixed_strategies_pricing_placement(
             g,
@@ -94,7 +100,8 @@ function mixed_strategies_colgen(
         a_res = mixed_strategies_pricing_attack(g, attack_config; cost_config)
 
         a′ = a_res.results # The new attack 
-        if obj > [length(surviving_nodes(g, s, a′)) for s in placementset] ⋅ q_star
+        if obj >
+           [length(surviving_nodes(g, s, a′)) for s in placementset] ⋅ q_star
             if !(a′ in attackset)
                 push!(attackset, a′)
                 has_changed = true
@@ -110,7 +117,7 @@ function mixed_strategies_colgen(
         obj = master_res.objective_value
     end
 
-    MixedStrategyResult(
+    return MixedStrategyResult(
         master_results,
         placement_results,
         attack_results,

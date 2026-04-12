@@ -17,10 +17,14 @@ function run_experiments(
     # Calculate the minimum BSC
     println("Calculating mininum possible BSC bound for BCC = $BCC...")
     controller_config_init = ControllerConstraints(P_fixed[1], P_fixed[2], 0, 0)
-    delay_config_init =
-        DelayConstraintsConfig(; BCC = BCC, BSC = BCC^2, distance_matrix = dists_matrix)
+    delay_config_init = DelayConstraintsConfig(;
+        BCC = BCC,
+        BSC = BCC^2,
+        distance_matrix = dists_matrix,
+    )
 
-    calculated_BSC = SDNOpt.maximum_sc_delay(g, controller_config_init, delay_config_init)
+    calculated_BSC =
+        SDNOpt.maximum_sc_delay(g, controller_config_init, delay_config_init)
     println("Calculated BSC: $calculated_BSC")
 
     # Define the final delay configuration with the calculated BSC
@@ -48,7 +52,8 @@ function run_experiments(
 
     for (i, B) in enumerate(B_list)
         # Update controller constraints for the current backup budget B
-        controller_constraints = ControllerConstraints(P_fixed[1], P_fixed[2], B[1], B[2])
+        controller_constraints =
+            ControllerConstraints(P_fixed[1], P_fixed[2], B[1], B[2])
 
         for (j, K) in enumerate(K_list)
             println("Starting with B=$(B) and K=$(K)")
