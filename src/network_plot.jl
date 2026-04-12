@@ -551,18 +551,22 @@ function generate_heatmap_tikz(
         "    \\node[right, font=\\scriptsize, yshift=0.3cm] at (0, 0) {Probability};",
     )
     println(io, "    \\shade[top color=red, bottom color=blue] (0, 0) rectangle (0.5, -4);")
-    println(io, "    \\node[right, font=\\scriptsize] at (0.5, 0) {$max_str};")
-    println(io, "    \\node[right, font=\\scriptsize] at (0.5, -2) {$mid_str};")
-    println(io, "    \\node[right, font=\\scriptsize] at (0.5, -4) {0.0};")
+    println(io, "    \\node[right, font=\\scriptsize] at (0.8, 0) {$max_str};")
+    println(io, "    \\node[right, font=\\scriptsize] at (0.8, -2) {$mid_str};")
+    println(io, "    \\node[right, font=\\scriptsize] at (0.8, -4) {0.0};")
 
+    println(io, "    \\draw[-, thin, gray] (-1, -4.75) -- (5, -4.75);")
     # Legend extensions for size
     println(
         io,
-        "    \\node[v_base, fill=red, inner sep=$(base_size + max_extra_size)pt] at (0.25, -5) {};",
+        "    \\node[v_base, fill=red, inner sep=$(base_size + max_extra_size)pt] at (0.25, -6) {};",
     )
-    println(io, "    \\node[right, font=\\scriptsize] at (0.5, -5) {Max Size};")
-    println(io, "    \\node[v_base, fill=blue, inner sep=$(base_size)pt] at (0.25, -6) {};")
-    println(io, "    \\node[right, font=\\scriptsize] at (0.5, -6) {Min Size};")
+    println(io, "    \\node[right, font=\\scriptsize] at (0.8, -6) {$max_str};")
+    println(
+        io,
+        "    \\node[v_base, fill=blue, inner sep=$(base_size)pt] at (0.25, -7.5) {};",
+    )
+    println(io, "    \\node[right, font=\\scriptsize] at (0.8, -7.5) {0.0};")
 
     println(io, "  \\end{scope}")
 

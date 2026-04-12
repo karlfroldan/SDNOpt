@@ -248,7 +248,8 @@ end
 function add_capacity_constraints!(
     g::MetaGraph,
     m::Model,
-    capacity_constraints::CapacityConstraintsConfig,
+    capacity_constraints::CapacityConstraintsConfig;
+    delay_constraints::Union{DelayConstraintsConfig,Nothing} = nothing,
 )
     V = nv(g)
     s = m[:s]
@@ -258,10 +259,16 @@ function add_capacity_constraints!(
 
     arrivals = capacity_constraints.arrivals
     controller_capacity = capacity_constraints.controller_capacity
-    cd = [arrivals[v] for v = 1:V]
+    λ = [arrivals[v] for v = 1:V]
     cc = [controller_capacity[v] for v = 1:V]
     for w = 1:V
-        @constraint(m, cd ⋅ h[:, w] ≤ cc[w] * s[w])
+        @constraint(m, λ ⋅ h[:, w] ≤ cc[w] * s[w])
+    end
+
+    # But if there are no delay constraints, simply ensure that 
+    # a switch is assigned to only one controller.
+    if isnothing(delay_constraints)
+        @constraint(m, [v in 1:V], sum(h[v, :]) == 1)
     end
 end
 
@@ -314,160 +321,6 @@ function add_survivability_constraints!(
                 length(vs) * S[a, c]
             end for (c, cs) in enumerate(C_sets[a])
         ])
-    )
-end
-
-## Paper: Max-Min Optimization of Controller Placements
-##        vs Min-Max Optimization of Attacks on Nodes in Service Networks
-
-# Formulation 3.1: Max-min Controller Placement optimization problem (CPOP)
-function cpop(
-    g::MetaGraph,
-    M::Int,
-    # The nodes that we want to attack.
-    attacks::Vector{Vector{Int}};
-    dists::Union{Nothing,Matrix{Float64}} = nothing,
-    BCC::Union{Nothing,Float64} = nothing,
-    BSC::Union{Nothing,Float64} = nothing,
-    optim = DEFAULT_OPTIM,
-)
-    # Find an M-node controller placement given the considered set of attacks
-    model = Model(optim)
-    set_silent(model)
-
-    dists = isnothing(dists) ? get_distance_matrix(g) : dists
-
-    V = nv(g)
-    alen = length(attacks)
-
-    # equals 1 iff controller is placed at loc v 
-    @variable(model, s[1:V], Bin)
-
-    # 1 if v survives attack a
-    @variable(model, y[1:V, 1:alen], Bin)
-
-    @variable(model, Y >= 0)
-
-    # 3a
-    @objective(model, Max, Y)
-
-    # 3b - # of controllers should be M
-    @constraint(model, sum(s) == M)
-
-    # 3c - all attacked nodes are zeroed out
-    for a = 1:alen
-        @constraint(model, y[attacks[a], a] .== 0)
-    end
-
-    # 3d - All nodes in components without controllers are zeroed out
-    for a = 1:alen
-        ag = attack_graph(g, attacks[a])
-        cs = components(ag)
-
-        # The surviving nodes after the attack
-        for comp in cs
-            # Vertices of comp are 1:size(comp)
-            # Get their labels instead and then map those labels to codes.
-            comp_labels = collect(labels(comp))
-            V_c = length(comp_labels)
-
-            comp_codes = labels_to_codes(g, comp_labels)
-            @constraint(model, sum(y[comp_codes, a]) ≤ V_c * sum(s[comp_codes]))
-        end
-        # 3e - Bounding objective value
-        @constraint(model, Y ≤ sum(y[:, a]))
-    end
-
-    # controllers must be within BCC distance of each other
-    if !isnothing(BCC)
-        U = get_U(BCC, dists)
-        @constraint(model, [(v, w) in U], s[v] + s[w] ≤ 1)
-    end
-
-    if !isnothing(BSC)
-        W = get_Wv(BSC, dists)
-        @constraint(model, [v in 1:V], sum(s[W[v]]) ≥ 1)
-    end
-
-    time_taken = @solve_problem!(model)
-
-    (
-        controllers = to_indices(s),
-        objective_value = objective_value(model),
-        model = model,
-        time = time_taken,
-    )
-end
-
-# Formulation 3.2: Min-Max Node Attack Optimization Problem (NAOP)
-function naop(g::MetaGraph, K::Int, placements::Vector{Vector{Int}}; optim = DEFAULT_OPTIM)
-    model = Model(optim)
-    set_silent(model)
-
-    V = nv(g)
-    E = ne(g)
-    S = length(placements)
-    # Attack variable 
-    @variable(model, a[1:V], Bin)
-    @variable(model, t[1:E], Bin)
-    @variable(model, z[1:V, 1:S], Bin)
-    @variable(model, Z >= 0)
-
-    @objective(model, Min, Z)
-
-    # 5b - K-node attack 
-    @constraint(model, sum(a) == K)
-
-    # 5c - Link is down after attack a
-    for v = 1:V
-        for (e, edge) in enumerate(edges(g))
-            if edge.src == v || edge.dst == v
-                @constraint(model, t[e] ≥ a[v])
-            end
-        end
-    end
-
-    # 5d - Link is down after attack a
-    for (e, edge) in enumerate(edges(g))
-        α, β = edge.src, edge.dst
-        @constraint(model, t[e] ≤ a[α] + a[β])
-    end
-
-    # 5e - Node v does not survive attack a if node v is attacked directly
-    for s = 1:S
-        @constraint(model, z[:, s] .≤ 1 .- a)
-    end
-
-    # 5f - Node v survives attack a when placement s is assumed if
-    #      node v is not directly attacked and its location contains 
-    #      a controller
-    for (s, placement) in enumerate(placements)
-        @constraint(model, z[placement, s] .≥ 1 .- a[placement])
-    end
-
-    # 5g and 5h - Make sure that if link e is available after attack a, then
-    #             its end nodes either simultaneaously suvive or both are out
-    #             of service.
-    for s = 1:S
-        for (e, edge) in enumerate(edges(g))
-            α, β = edge.src, edge.dst
-            @constraint(model, z[α, s] ≥ z[β, s] - t[e])
-            @constraint(model, z[β, s] ≥ z[α, s] - t[e])
-        end
-    end
-
-    # 5i 
-    for s = 1:S
-        @constraint(model, Z ≥ sum(z[:, s]))
-    end
-
-    time_taken = @solve_problem!(model)
-
-    (
-        attack = to_indices(a),
-        objective_value = objective_value(model),
-        model = model,
-        time = time_taken,
     )
 end
 

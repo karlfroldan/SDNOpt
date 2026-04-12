@@ -77,8 +77,8 @@ function load_network(filename::AbstractString)
     end
 
     for e in edges
-        # @printf("%d -> %d => %f\n", e.link_a, e.link_b, e.length)
-        mg[e.link_a, e.link_b] = e.length
+        # The number of hops
+        mg[e.link_a, e.link_b] = 1.0 # e.length
     end
 
     mg
@@ -120,29 +120,31 @@ function plot_network(g::MetaGraph; title = nothing)
     )
 end
 
+"""
+    components(g::MetaGraph)
 
+Collect the connected components of a graph into a list of graphs.
+"""
 function components(g::MetaGraph)
     component_indices = connected_components(g)
     [first(induced_subgraph(g, idx)) for idx in component_indices]
 end
 
-function distance_matrix(g::MetaGraph)
-    n = nv(g)
-    dist_matrix = fill(Inf, n, n)
+"""
+    incident_edges(g::MetaGraph, v::Int)
 
-    for i = 1:n
-        ds = dijkstra_shortest_paths(g, i)
-        dist_matrix[i, :] = ds.dists
-    end
-
-    return dist_matrix
-end
-
+Given some node `v`, return the edges incident to think node.
+"""
 function incident_edges(g::MetaGraph, v::Int)
     v_idx = code_for(g, v)
     [e for e in edges(g) if e.src == v_idx || e.dst == v_idx]
 end
 
+"""
+    get_distance_matrix(g::AbstractGraph)
+
+Return the distance matrix of the graph using dijkstra's algorithm.
+"""
 function get_distance_matrix(g::AbstractGraph)
     V = nv(g)
     dists = fill(Inf, V, V)
