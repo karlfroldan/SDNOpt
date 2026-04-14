@@ -11,10 +11,9 @@ struct SDNEdge
     length::Float64
 end
 
-load_dognet() = load_network("networks/dognet.dat")
-load_coronet_conus() = load_network("networks/coronet-conus.dat")
-load_cost266() = load_network("networks/cost266.dat")
-load_cost266() = load_network("networks/cost266.sndlib")
+# load_dognet() = load_network("networks/dognet.dat")
+load_coronet_conus() = load_network_from_file("networks/coronet-conus.sndlib")
+load_cost266() = load_network_from_file("networks/cost266.sndlib")
 
 # Codes - Internal integer representation for the graph
 function codes_to_labels(g::MetaGraph, codes::Vector{Int})
@@ -26,8 +25,13 @@ function labels_to_codes(g::MetaGraph, node_labels)
     return [code_for(g, l) for l in node_labels]
 end
 
-function load_network(filename::AbstractString)
-    contents = split(String(read(filename)), "\n")
+function load_network_from_file(filename::AbstractString)
+    contents = String(read(filename))
+    return load_network(contents)
+end
+
+function load_network(contents::AbstractString)
+    contents = split(contents, "\n")
     
     mg = MetaGraph(
         SimpleWeightedGraph();
