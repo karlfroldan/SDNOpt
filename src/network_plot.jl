@@ -617,3 +617,131 @@ function generate_heatmap_tikz(
 
     return latex_str
 end
+
+function generate_heatmap(
+    g::MetaGraph,
+    node_probs::Dict{Int,Float64};
+    show_labels::Bool = true,
+    save_path::Union{String,Nothing} = nothing,
+    rotate_deg::Real = 0.0,
+    flip_x::Bool = false,
+    flip_y::Bool = false,
+)
+    x_coords, y_coords, locs = extract_coordinates(g)
+
+    # Transformations
+    transformed_locs = Dict()
+    rad = deg2rad(rotate_deg)
+
+    for v in vertices(g)
+        x, y = locs[v][1], locs[v][2]
+
+        # Apply rotation
+        if rotate_deg != 0.0
+            x_rot = x * cos(rad) - y * sin(rad)
+            y_rot = x * sin(rad) + y * cos(rad)
+            x, y = x_rot, y_rot
+        end
+
+        # Apply flips
+        if flip_x
+            x = -x
+        end
+        if flip_y
+            y = -y
+        end
+
+        transformed_locs[v] = tuple(x, y, locs[v][3:end]...)
+    end
+
+    locs = transformed_locs
+
+    n_v = nv(g)
+    x_pos = [locs[v][1] for v in 1:n_v]
+    y_pos = [locs[v][2] for v in 1:n_v]
+
+    # Initialize plot
+    p = plot(
+        legend = false,
+        grid = false,
+        showaxis = false,
+        aspect_ratio = :equal,
+        framestyle = :none
+    )
+
+    # Draw edges
+    edge_x = Float64[]
+    edge_y = Float64[]
+    for e in edges(g)
+        u, v = src(e), dst(e)
+        push!(edge_x, locs[u][1], locs[v][1], NaN)
+        push!(edge_y, locs[u][2], locs[v][2], NaN)
+    end
+    plot!(p, edge_x, edge_y, linecolor = :black, linewidth = 1)
+
+    # Calculate probabilities, sizes, and colors
+    max_prob = isempty(node_probs) ? 1.0 : maximum(values(node_probs))
+    safe_max_prob = max_prob == 0.0 ? 1.0 : max_prob
+
+    base_size = 5.0
+    max_extra_size = 15.0
+
+    node_colors = []
+    node_sizes = Float64[]
+    cg = cgrad([:blue, :red])
+
+    for v in 1:n_v
+        prob = get(node_probs, v, 0.0)
+        norm_prob = prob / safe_max_prob
+        
+        push!(node_colors, cg[norm_prob])
+        push!(node_sizes, base_size + (norm_prob * max_extra_size))
+    end
+
+    # Draw nodes
+    scatter!(
+        p,
+        x_pos,
+        y_pos,
+        markercolor = node_colors,
+        markersize = node_sizes,
+        markerstrokecolor = :black,
+        markerstrokewidth = 1
+    )
+
+    # Draw labels
+    if show_labels
+        for v in 1:n_v
+            # Offset based on node size to prevent text overlap
+            offset_y = node_sizes[v] * 0.05
+            annotate!(
+                p,
+                x_pos[v],
+                y_pos[v] - offset_y,
+                text(string(v), 8, :top, :black)
+            )
+        end
+    end
+
+    # Add hidden point to generate the colorbar mapping
+    scatter!(
+        p,
+        [x_pos[1]],
+        [y_pos[1]],
+        zcolor = [0.0, max_prob],
+        clims = (0.0, max_prob),
+        c = cg,
+        markersize = 0,
+        markeralpha = 0,
+        colorbar = true,
+        colorbar_title = "Probability",
+        label = ""
+    )
+
+    # Save logic
+    if !isnothing(save_path)
+        savefig(p, save_path)
+    end
+
+    return p
+end

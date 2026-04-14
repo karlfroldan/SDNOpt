@@ -205,21 +205,25 @@ function add_controllers!(
         P″ = controller_constraints.P″
         B′ = controller_constraints.B′
         B″ = controller_constraints.B″
-        # There are backup controllers.
-        @variable(m, r[1:V], Bin)
 
-        # Total number of controllers 
-        @constraint(m, sum(s) + sum(r) == M)
-
-        # Bounds on the primary and backup controllers.
         @constraint(m, P′ ≤ sum(s) ≤ P″)
-        @constraint(m, B′ ≤ sum(r) ≤ B″)
 
-        # Ensure that a controller is of only one type.
-        # * s[v] == 1 : primary controller
-        # * r[v] == 1 : backup controller
-        # * s[v] + r[v] == 0 : switch 
-        @constraint(m, s .+ r .≤ 1)
+        if !(B′ == B″ == 0)
+            # Consider backups
+
+            # There are backup controllers.
+            @variable(m, r[1:V], Bin)
+
+            # Total number of controllers 
+            @constraint(m, sum(s) + sum(r) == M)
+            @constraint(m, B′ ≤ sum(r) ≤ B″)
+
+            # Ensure that a controller is of only one type.
+            # * s[v] == 1 : primary controller
+            # * r[v] == 1 : backup controller
+            # * s[v] + r[v] == 0 : switch 
+            @constraint(m, s .+ r .≤ 1)
+        end
     end
 end
 
@@ -309,9 +313,14 @@ function add_survivability_constraints!(
             if isnothing(controller_constraints)
                 @constraint(m, S[a, c] .≤ sum(s[vs]))
             else
-                # The set of backup controller nodes 
-                r = m[:r]
-                @constraint(m, S[a, c] .≤ sum(s[vs] + r[vs]))
+                B′ = controller_constraints.B′
+                B″ = controller_constraints.B″
+
+                if !(B′ == B″ == 0)
+                    # The set of backup controller nodes 
+                    r = m[:r]
+                    @constraint(m, S[a, c] .≤ sum(s[vs] + r[vs]))
+                end
             end
         end
     end
@@ -551,10 +560,17 @@ function mixed_strategies_pricing_placement(
 
     time_taken = @solve_problem!(m)
 
-    placements = get_controller_placements(
-        m;
-        with_backups = !isnothing(controller_constraints),
-    )
+    if isnothing(controller_constraints)
+        placements = get_controller_placements(m; with_backups=false)
+    else
+        B′ = controller_constraints.B′
+        B″ = controller_constraints.B″
+
+        placements = get_controller_placements(
+            m; 
+            with_backups=!(B′ == B″ == 0)
+        )
+    end
 
     return SubResult{Placements}(time_taken, objective_value(m), placements)
 end

@@ -47,6 +47,7 @@ export mixed_strategies_colgen
 
 ### Exports from network_plot.jl
 export generate_tikz, generate_heatmap_tikz, calculate_node_probabilities
+export generate_heatmap
 
 ### Exports from structs.jl
 export Placements, Attacks, PlacementConfig, AttackConfig, AttackCostConfig

@@ -14,6 +14,7 @@ end
 load_dognet() = load_network("networks/dognet.dat")
 load_coronet_conus() = load_network("networks/coronet-conus.dat")
 load_cost266() = load_network("networks/cost266.dat")
+load_cost266() = load_network("networks/cost266.sndlib")
 
 # Codes - Internal integer representation for the graph
 function codes_to_labels(g::MetaGraph, codes::Vector{Int})
@@ -27,8 +28,7 @@ end
 
 function load_network(filename::AbstractString)
     contents = split(String(read(filename)), "\n")
-    is_parsing_nodes = false
-
+    
     mg = MetaGraph(
         SimpleWeightedGraph();
         label_type = Int,
@@ -40,33 +40,61 @@ function load_network(filename::AbstractString)
 
     nodes = SDNNode[]
     edges = SDNEdge[]
+    
+    current_section = :none
+    node_id_counter = 1
+    node_to_id = Dict{String, Int}()
 
     for line in contents
-        if startswith(line, "param: sa_Nodes")
-            # We are still parsing nodes
-            is_parsing_nodes = true
+        line = strip(line)
+        
+        # Skip comments and empty lines
+        if startswith(line, "#") || startswith(line, "?") || isempty(line)
             continue
-        elseif startswith(line, "param: sa_Links")
-            is_parsing_nodes = false
+        end
+
+        # Track sections
+        if startswith(line, "NODES (")
+            current_section = :nodes
             continue
-        elseif startswith(line, ";") || line == ""
+        elseif startswith(line, "LINKS (")
+            current_section = :links
+            continue
+        elseif startswith(line, "DEMANDS (") || startswith(line, "ADMISSIBLE_PATHS (")
+            current_section = :other
+            continue
+        elseif line == ")"
+            current_section = :none
             continue
         end
 
         lsplit = split(line)
+        if isempty(lsplit)
+            continue
+        end
 
-        if is_parsing_nodes
-            id = parse(Int, lsplit[1])
+        if current_section == :nodes
+            str_label = lsplit[1]
             loc_x = parse(Float64, lsplit[3])
-            loc_y = parse(Float64, lsplit[2])
-            str_label = replace(lsplit[4], '_' => ' ')
+            loc_y = parse(Float64, lsplit[4])
+            
+            # Create integer mapping
+            id = node_id_counter
+            node_to_id[str_label] = id
+            node_id_counter += 1
+            
             new_node = SDNNode(str_label, id, loc_x, loc_y)
-            # @show new_node
             push!(nodes, new_node)
-        else
-            from_n = parse(Int, lsplit[2])
-            to_n = parse(Int, lsplit[3])
-            dist = parse(Float64, lsplit[4])
+            
+        elseif current_section == :links
+            from_str = lsplit[3]
+            to_str = lsplit[4]
+            dist = parse(Float64, lsplit[8])
+            
+            # Lookup integer mappings
+            from_n = node_to_id[from_str]
+            to_n = node_to_id[to_str]
+            
             new_edge = SDNEdge(from_n, to_n, dist)
             push!(edges, new_edge)
         end
@@ -77,7 +105,6 @@ function load_network(filename::AbstractString)
     end
 
     for e in edges
-        # The number of hops
         mg[e.link_a, e.link_b] = 1.0 # e.length
     end
 
