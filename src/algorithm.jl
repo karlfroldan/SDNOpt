@@ -22,6 +22,8 @@ function mixed_strategies_colgen(
     cost_config::Union{AttackCostConfig,Nothing} = nothing,
     optim = DEFAULT_OPTIM,
     time_limit::Float64 = TIME_LIMIT,
+    callback::Function = (p, q, v) -> nothing,
+    callback_time::Function = (mtime, ptime, atime) -> nothing,
 )
     V = nv(g)
     _, K″ = @unpack_bounds attack_config.K
@@ -58,6 +60,7 @@ function mixed_strategies_colgen(
         p_star = master_res.results.p_star
         q_star = master_res.results.q_star
         obj = master_res.objective_value
+        mtime1 = master_res.time
         # Step 1
         # Sovle the placement generation problem to get
         # placement s′
@@ -115,6 +118,10 @@ function mixed_strategies_colgen(
         p_star = master_res.results.p_star
         q_star = master_res.results.q_star
         obj = master_res.objective_value
+        mtime2 = master_res.time
+
+        callback(p_res.objective_value, a_res.objective_value, master_res.objective_value)
+        callback_time(mtime1 + mtime2, p_res.time, a_res.time)
     end
 
     return MixedStrategyResult(
