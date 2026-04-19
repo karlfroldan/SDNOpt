@@ -547,7 +547,7 @@ function generate_heatmap_tikz(
         end
 
         # Mix red with blue
-        fill_color = "red!$(intensity)!blue"
+        fill_color = "red!$(intensity)!cyan"
 
         if show_labels
             label_pos = calculate_tikz_label_position(
@@ -661,12 +661,12 @@ function generate_heatmap(
     y_pos = [locs[v][2] for v in 1:n_v]
 
     # Initialize plot
-    p = plot(
+    p = plot(;
         legend = false,
         grid = false,
         showaxis = false,
         aspect_ratio = :equal,
-        framestyle = :none
+        framestyle = :none,
     )
 
     # Draw edges
@@ -677,7 +677,7 @@ function generate_heatmap(
         push!(edge_x, locs[u][1], locs[v][1], NaN)
         push!(edge_y, locs[u][2], locs[v][2], NaN)
     end
-    plot!(p, edge_x, edge_y, linecolor = :black, linewidth = 1)
+    plot!(p, edge_x, edge_y; linecolor = :black, linewidth = 1)
 
     # Calculate probabilities, sizes, and colors
     max_prob = isempty(node_probs) ? 1.0 : maximum(values(node_probs))
@@ -693,7 +693,7 @@ function generate_heatmap(
     for v in 1:n_v
         prob = get(node_probs, v, 0.0)
         norm_prob = prob / safe_max_prob
-        
+
         push!(node_colors, cg[norm_prob])
         push!(node_sizes, base_size + (norm_prob * max_extra_size))
     end
@@ -702,11 +702,11 @@ function generate_heatmap(
     scatter!(
         p,
         x_pos,
-        y_pos,
+        y_pos;
         markercolor = node_colors,
         markersize = node_sizes,
         markerstrokecolor = :black,
-        markerstrokewidth = 1
+        markerstrokewidth = 1,
     )
 
     # Draw labels
@@ -718,7 +718,7 @@ function generate_heatmap(
                 p,
                 x_pos[v],
                 y_pos[v] - offset_y,
-                text(string(v), 8, :top, :black)
+                text(string(v), 8, :top, :black),
             )
         end
     end
@@ -727,7 +727,7 @@ function generate_heatmap(
     scatter!(
         p,
         [x_pos[1]],
-        [y_pos[1]],
+        [y_pos[1]];
         zcolor = [0.0, max_prob],
         clims = (0.0, max_prob),
         c = cg,
@@ -735,7 +735,7 @@ function generate_heatmap(
         markeralpha = 0,
         colorbar = true,
         colorbar_title = "Probability",
-        label = ""
+        label = "",
     )
 
     # Save logic

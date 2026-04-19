@@ -32,7 +32,7 @@ end
 
 function load_network(contents::AbstractString)
     contents = split(contents, "\n")
-    
+
     mg = MetaGraph(
         SimpleWeightedGraph();
         label_type = Int,
@@ -44,14 +44,14 @@ function load_network(contents::AbstractString)
 
     nodes = SDNNode[]
     edges = SDNEdge[]
-    
+
     current_section = :none
     node_id_counter = 1
-    node_to_id = Dict{String, Int}()
+    node_to_id = Dict{String,Int}()
 
     for line in contents
         line = strip(line)
-        
+
         # Skip comments and empty lines
         if startswith(line, "#") || startswith(line, "?") || isempty(line)
             continue
@@ -64,7 +64,8 @@ function load_network(contents::AbstractString)
         elseif startswith(line, "LINKS (")
             current_section = :links
             continue
-        elseif startswith(line, "DEMANDS (") || startswith(line, "ADMISSIBLE_PATHS (")
+        elseif startswith(line, "DEMANDS (") ||
+               startswith(line, "ADMISSIBLE_PATHS (")
             current_section = :other
             continue
         elseif line == ")"
@@ -81,24 +82,24 @@ function load_network(contents::AbstractString)
             str_label = lsplit[1]
             loc_x = parse(Float64, lsplit[3])
             loc_y = parse(Float64, lsplit[4])
-            
+
             # Create integer mapping
             id = node_id_counter
             node_to_id[str_label] = id
             node_id_counter += 1
-            
+
             new_node = SDNNode(str_label, id, loc_x, loc_y)
             push!(nodes, new_node)
-            
+
         elseif current_section == :links
             from_str = lsplit[3]
             to_str = lsplit[4]
             dist = parse(Float64, lsplit[8])
-            
+
             # Lookup integer mappings
             from_n = node_to_id[from_str]
             to_n = node_to_id[to_str]
-            
+
             new_edge = SDNEdge(from_n, to_n, dist)
             push!(edges, new_edge)
         end

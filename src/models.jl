@@ -249,6 +249,11 @@ function add_delay_constraints!(
         # We use the information about capacity constraints 
         h = m[:h] # h[i, j] = switch i is assigned to controller j
         @constraint(m, [v in 1:V], sum(h[v, W[v]]) == 1)
+        @constraint(
+            m,
+            [v in 1:V],
+            sum(h[v, w] for w in 1:V if !(w in W[v])) == 0
+        )
     else
         @constraint(m, [v in 1:V], sum(s[W[v]]) ≥ 1)
     end
@@ -320,6 +325,8 @@ function add_survivability_constraints!(
                     # The set of backup controller nodes 
                     r = m[:r]
                     @constraint(m, S[a, c] .≤ sum(s[vs] + r[vs]))
+                else
+                    @constraint(m, S[a, c] .≤ sum(s[vs]))
                 end
             end
         end
@@ -341,7 +348,7 @@ end
 
 function maximum_sc_delay(
     g::MetaGraph,
-    controller_config::ControllerConstraints,
+    controllers::Union{ControllerConstraints,Int},
     delay_constraints::DelayConstraintsConfig;
     tol = 1e-9,
     optim = DEFAULT_OPTIM,
@@ -354,7 +361,14 @@ function maximum_sc_delay(
     @assert BSC > 0.0
     @assert BCC > 0.0
 
-    P′, P″ = controller_config.P′, controller_config.P″
+    if controllers isa Int
+        P′ = controllers
+        P″ = controllers
+    else
+        P′ = controllers.P′
+        P″ = controllers.P″
+    end
+
     dists = delay_constraints.distance_matrix
 
     m = Model(optim)
@@ -388,6 +402,7 @@ function maximum_sc_delay(
 
     # A1d
     @constraint(m, [v in keys(Wv)], sum(z[v, w] for w in Wv[v]) == 1)
+    @constraint(m, [v in 1:V], sum(h[v, w] for w in 1:V if !(w in Wv[v])) == 0)
 
     # A1e
     @constraint(m, [v in keys(Wv), w in Wv[v]; w != v], z[v, w] ≤ s[w])
@@ -561,15 +576,13 @@ function mixed_strategies_pricing_placement(
     time_taken = @solve_problem!(m)
 
     if isnothing(controller_constraints)
-        placements = get_controller_placements(m; with_backups=false)
+        placements = get_controller_placements(m; with_backups = false)
     else
         B′ = controller_constraints.B′
         B″ = controller_constraints.B″
 
-        placements = get_controller_placements(
-            m; 
-            with_backups=!(B′ == B″ == 0)
-        )
+        placements =
+            get_controller_placements(m; with_backups = !(B′ == B″ == 0))
     end
 
     return SubResult{Placements}(time_taken, objective_value(m), placements)

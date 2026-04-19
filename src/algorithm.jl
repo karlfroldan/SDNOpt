@@ -41,7 +41,7 @@ function mixed_strategies_colgen(
     attackset = Attacks[randvec(V, K″)]
 
     function update_master()
-        mixed_strategies_master(g, placementset, attackset; optim)
+        return mixed_strategies_master(g, placementset, attackset; optim)
     end
 
     has_changed = true
@@ -120,7 +120,11 @@ function mixed_strategies_colgen(
         obj = master_res.objective_value
         mtime2 = master_res.time
 
-        callback(p_res.objective_value, a_res.objective_value, master_res.objective_value)
+        callback(
+            p_res.objective_value,
+            a_res.objective_value,
+            master_res.objective_value,
+        )
         callback_time(mtime1 + mtime2, p_res.time, a_res.time)
     end
 
