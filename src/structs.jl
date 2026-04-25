@@ -152,14 +152,28 @@ function Base.show(io::IO, obj::MixedStrategyResult)
     n_placements = length(obj.final_placements)
     n_attacks = length(obj.final_attacks)
 
+    eps = 1e-9
+
+    last_p_star = obj.master[end].results.p_star
+    last_q_star = obj.master[end].results.q_star
+
+    n_p_star_nonzero = sum(last_p_star .≥ eps)
+    n_q_star_nonzero = sum(last_q_star .≥ eps)
+
     master_time = sum(solver_time(obj, :master))
     placement_time = sum(solver_time(obj, :placement))
     attack_time = sum(solver_time(obj, :attack))
 
+    total_time = master_time + placement_time + attack_time
+
+    outcome = obj.master[end].objective_value
+
     println(io, "--- Solved and feasible ---")
-    println(io, "n_placements: $n_placements")
-    println(io, "n_attacks: $n_attacks")
+    println(io, "n_placements: $n_q_star_nonzero / $n_placements")
+    println(io, "n_attacks: $n_p_star_nonzero / $n_attacks")
+    println(io, "outcome: $outcome")
     println(io, "time to solve master: $master_time")
     println(io, "time to generate placements: $placement_time")
-    return println(io, "time to generate attacks: $attack_time")
+    println(io, "time to generate attacks: $attack_time")
+    println(io, "total solving time: $total_time")
 end

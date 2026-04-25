@@ -402,7 +402,6 @@ function maximum_sc_delay(
 
     # A1d
     @constraint(m, [v in keys(Wv)], sum(z[v, w] for w in Wv[v]) == 1)
-    @constraint(m, [v in 1:V], sum(h[v, w] for w in 1:V if !(w in Wv[v])) == 0)
 
     # A1e
     @constraint(m, [v in keys(Wv), w in Wv[v]; w != v], z[v, w] ≤ s[w])
