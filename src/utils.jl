@@ -12,7 +12,7 @@ end
 
 function safe_probs(p::AbstractArray; tol::Float64 = 1e-10)
     v = abs.(collect(p))
-    v[v.<tol] .= 0.0
+    v[v .< tol] .= 0.0
 
     # Normalize
     total_mass = sum(v)

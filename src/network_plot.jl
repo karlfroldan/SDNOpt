@@ -57,17 +57,16 @@ function determine_network_styles(
     linecolor,
 )
     inactive_color = plot_color("#E5E5E5")
-    comp_palette =
-        plot_color.([
-            :black,
-            :darkgreen,
-            :darkorange,
-            :purple,
-            :teal,
-            :saddlebrown,
-            :magenta,
-            :olive,
-        ])
+    comp_palette = plot_color.([
+        :black,
+        :darkgreen,
+        :darkorange,
+        :purple,
+        :teal,
+        :saddlebrown,
+        :magenta,
+        :olive,
+    ])
 
     # Custom Blue Gradient for Controller Load
     # lightblue = Low Load, darkblue = High Load

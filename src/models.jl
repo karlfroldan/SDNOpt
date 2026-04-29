@@ -305,7 +305,7 @@ function add_survivability_constraints!(
 
     # Component Survivability variable 
     # S=1 if component survives
-    @variable(m, S[a = 1:alen, c = 1:length(C_sets[a])], Bin)
+    @variable(m, S[a=1:alen, c=1:length(C_sets[a])], Bin)
 
     # The set of primary controller nodes 
     s = m[:s]
@@ -513,11 +513,7 @@ function mixed_strategies_master(
         end
     end
 
-    @constraint(
-        m,
-        con[i = 1:asize],
-        y ≤ sum(V_mat[i, j] * q[j] for j in 1:psize)
-    )
+    @constraint(m, con[i=1:asize], y ≤ sum(V_mat[i, j] * q[j] for j in 1:psize))
     time_taken = @solve_problem!(m)
 
     raw_duals = [dual(con[i]) for i in 1:asize]

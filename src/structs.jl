@@ -175,5 +175,5 @@ function Base.show(io::IO, obj::MixedStrategyResult)
     println(io, "time to solve master: $master_time")
     println(io, "time to generate placements: $placement_time")
     println(io, "time to generate attacks: $attack_time")
-    println(io, "total solving time: $total_time")
+    return println(io, "total solving time: $total_time")
 end
