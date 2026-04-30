@@ -11,9 +11,13 @@ struct SDNEdge
     length::Float64
 end
 
+basefile(file) = joinpath(dirname(Base.current_project()), file)
+
 # load_dognet() = load_network("networks/dognet.dat")
-load_coronet_conus() = load_network_from_file("networks/coronet-conus.sndlib")
-load_cost266() = load_network_from_file("networks/cost266.sndlib")
+function load_coronet_conus()
+    return load_network_from_file(basefile("networks/coronet-conus.sndlib"))
+end
+load_cost266() = load_network_from_file(basefile("networks/cost266.sndlib"))
 
 # Codes - Internal integer representation for the graph
 function codes_to_labels(g::MetaGraph, codes::Vector{Int})

@@ -5,7 +5,6 @@ experiments/
 .local
 csvtool/
 *.tikz
-notebooks/
 .venv/
 .ipynb_checkpoints/
 *.tex
